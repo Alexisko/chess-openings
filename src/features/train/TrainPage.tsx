@@ -17,10 +17,13 @@ interface QueuedRun {
   run: PlannedRun
 }
 
-const MODE_TITLE: Record<ReviewMode, string> = { review: 'Review', learn: 'Learn new moves', drill: 'Drill weak spots' }
+/** Modes you can train in ('game' reviews only come from imported games). */
+type TrainMode = Exclude<ReviewMode, 'game'>
+
+const MODE_TITLE: Record<TrainMode, string> = { review: 'Review', learn: 'Learn new moves', drill: 'Drill weak spots' }
 
 /** Builds the session queue once, from a snapshot of the data. */
-async function buildQueue(mode: ReviewMode, repId: string | null, extraNew: number): Promise<QueuedRun[]> {
+async function buildQueue(mode: TrainMode, repId: string | null, extraNew: number): Promise<QueuedRun[]> {
   const settings = await getSettings()
   const reps = (await db.repertoires.toArray())
     .filter((r) => !repId || r.id === repId)
@@ -71,7 +74,7 @@ interface Feedback {
 
 export function TrainPage() {
   const [params] = useSearchParams()
-  const mode = (params.get('mode') as ReviewMode) || 'review'
+  const mode = (params.get('mode') as TrainMode) || 'review'
   const repId = params.get('rep')
   const [extraNew, setExtraNew] = useState(0)
   const sessionKey = `${mode}-${repId}-${extraNew}`
@@ -113,7 +116,7 @@ export function TrainPage() {
   return <Session key={sessionKey} mode={mode} queue={queue} />
 }
 
-function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
+function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const [index, setIndex] = useState(0)
   const [pass, setPass] = useState<'demo' | 'recall'>(mode === 'learn' ? 'demo' : 'recall')
   // LineRun is a small mutable state machine; `tick` re-renders after it changes.
@@ -282,7 +285,7 @@ function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
   )
 }
 
-function Summary({ mode, stats, total }: { mode: ReviewMode; stats: { correct: number; wrong: number; mistakes: string[] }; total: number }) {
+function Summary({ mode, stats, total }: { mode: TrainMode; stats: { correct: number; wrong: number; mistakes: string[] }; total: number }) {
   const attempts = stats.correct + stats.wrong
   return (
     <div className="card mx-auto max-w-md p-4">

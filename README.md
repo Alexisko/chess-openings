@@ -17,6 +17,14 @@ are against the moves real opponents play.
   remember, when opponents choose moves at the explorer's frequencies. The gap list ranks the biggest
   leaks: replies you haven't prepared, lines that end too early, and moves you haven't learned or recall
   poorly.
+- **Your games:** imports your Lichess and Chess.com bullet, blitz, rapid and classical games (the last 12
+  months at first, then only new ones) and finds where each game left your preparation. Bullet counts
+  here, though not in the explorer statistics: you should know your moves at any speed.
+  - Moves you forgot are listed, and one played after the card's last review sends the card back to review.
+  - Replies you have no answer to, and lines that ended mid-game, link to the builder.
+  - Openings no repertoire covers can start a new repertoire.
+  - The engine checks the most frequent deviations for opponent mistakes to punish and your own
+    mistakes right after your preparation.
 
 ## Stack
 
@@ -48,7 +56,8 @@ src/lib/explorer Lichess explorer client (cache + throttled queue)
 src/lib/engine/  Stockfish worker, cloud eval, UCI parsing
 src/lib/srs/     FSRS scheduling, session planning, line runs
 src/lib/prep/    preparedness score and gap finder
-src/features/    pages: dashboard, builder, train, settings
+src/lib/games/   game import (Lichess, Chess.com), comparison with the repertoire, engine checks
+src/features/    pages: dashboard, builder, train, games, settings
 ```
 
 GPL-3.0 dependencies (chessground, chessops, Stockfish) mean that a distributed version of the app must

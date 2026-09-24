@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { ColorDot, Section } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
@@ -117,9 +117,11 @@ function RepertoireRow({ rep, settings }: { rep: Repertoire; settings: Settings 
 }
 
 function NewRepertoire() {
+  // The Games page links here with the colour and moves of an opening you meet but haven't prepared.
+  const [params] = useSearchParams()
   const [name, setName] = useState('')
-  const [color, setColor] = useState<'white' | 'black'>('white')
-  const [startText, setStartText] = useState('')
+  const [color, setColor] = useState<'white' | 'black'>(params.get('newColor') === 'black' ? 'black' : 'white')
+  const [startText, setStartText] = useState(params.get('newStart') ?? '')
   const [error, setError] = useState<string>()
   const navigate = useNavigate()
   const submit = async (e: React.FormEvent) => {
@@ -148,7 +150,13 @@ function NewRepertoire() {
   return (
     <Section title="New repertoire">
       <form onSubmit={submit} className="flex flex-col gap-2">
-        <input className="input" placeholder="Vienna Game" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="input"
+          placeholder="Vienna Game"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus={params.has('newStart')}
+        />
         <label className="flex flex-col gap-1 text-xs text-muted">
           Starts after (optional)
           <input

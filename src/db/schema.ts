@@ -54,7 +54,8 @@ export interface Card {
   updatedAt: number
 }
 
-export type ReviewMode = 'learn' | 'review' | 'drill'
+/** 'game' logs come from imported games (a wrong move played in a real game). */
+export type ReviewMode = 'learn' | 'review' | 'drill' | 'game'
 
 export interface ReviewLog {
   id: string
@@ -66,6 +67,32 @@ export interface ReviewLog {
   playedUci: string
   correct: boolean
   mode: ReviewMode
+  /** For 'game' logs: the imported game the move was played in. */
+  gameId?: string
+}
+
+export type GameSource = 'lichess' | 'chesscom'
+/** Bullet counts here: these are your own games, unlike the explorer statistics. */
+export type GameSpeed = 'bullet' | 'blitz' | 'rapid' | 'classical'
+
+/** One of the owner's games, imported from Lichess or Chess.com (opening moves only). */
+export interface Game {
+  /** Source-prefixed id, e.g. "lichess:abcd1234". */
+  id: string
+  source: GameSource
+  url: string
+  /** When the game was played (ms). */
+  playedAt: number
+  speed: GameSpeed
+  /** The colour the owner played. */
+  color: Color
+  opponent: string
+  opponentRating?: number
+  result: 'win' | 'draw' | 'loss'
+  /** The first moves (canonical UCI from the initial position) and their SAN. */
+  moves: string[]
+  sans: string[]
+  createdAt: number
 }
 
 export interface ExplorerCacheEntry {
@@ -96,6 +123,7 @@ export class AppDB extends Dexie {
   explorerCache!: EntityTable<ExplorerCacheEntry, 'key'>
   evalCache!: EntityTable<EvalCacheEntry, 'positionKey'>
   settings!: EntityTable<Setting, 'key'>
+  games!: EntityTable<Game, 'id'>
 
   constructor(name = 'opening-trainer') {
     super(name)
@@ -109,6 +137,7 @@ export class AppDB extends Dexie {
       evalCache: 'positionKey',
       settings: 'key',
     })
+    this.version(2).stores({ games: 'id, source, playedAt' })
   }
 }
 

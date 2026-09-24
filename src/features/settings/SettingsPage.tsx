@@ -83,7 +83,7 @@ function LichessAccount({ settings }: { settings: Settings }) {
           onBlur={(e) => setSetting('chesscomUser', e.target.value.trim())}
         />
       </label>
-      <p className="mt-1 text-xs text-muted">Used later to import your games and find where you left your preparation.</p>
+      <p className="mt-1 text-xs text-muted">Your games are imported on the Games page to find where you left your preparation.</p>
     </Section>
   )
 }

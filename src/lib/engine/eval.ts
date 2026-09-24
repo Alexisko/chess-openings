@@ -20,12 +20,12 @@ export async function cloudEval(fen: string, multiPv = MULTI_PV): Promise<Evalua
   }
 }
 
-async function cachedEval(fen: string): Promise<Evaluation | null> {
+export async function cachedEval(fen: string): Promise<Evaluation | null> {
   const hit = await db.evalCache.get(positionKey(fen))
   return hit ? { ...(hit.data as Evaluation), fen } : null
 }
 
-async function storeEval(e: Evaluation) {
+export async function storeEval(e: Evaluation) {
   const key = positionKey(e.fen)
   const prev = await db.evalCache.get(key)
   const prevLines = (prev?.data as Evaluation | undefined)?.lines.length ?? 0

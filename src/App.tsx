@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useSettings } from './db/settings'
 import { BuilderPage } from './features/builder/BuilderPage'
+import { GamesPage } from './features/games/GamesPage'
 import { HomePage } from './features/dashboard/HomePage'
 import { OverviewPage } from './features/overview/OverviewPage'
 import { RepertoirePage } from './features/dashboard/RepertoirePage'
@@ -12,6 +13,7 @@ import { completeLoginIfCallback } from './lib/auth/lichess'
 const NAV = [
   { to: '/', label: 'Home', icon: '⌂' },
   { to: '/train?mode=review', label: 'Train', icon: '↻' },
+  { to: '/games', label: 'Games', icon: '♟' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
@@ -72,6 +74,7 @@ export default function App() {
           <Route path="/rep/:id/build" element={<BuilderPage />} />
           <Route path="/rep/:id/tree" element={<OverviewPage />} />
           <Route path="/train" element={<TrainPage />} />
+          <Route path="/games" element={<GamesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

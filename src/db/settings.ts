@@ -13,6 +13,8 @@ export interface Settings {
   newPerDay: number
   /** Eval loss (centipawns) above which a repertoire move is flagged. */
   blunderThreshold: number
+  /** Which game import rules the stored games were fetched with (see lib/games/import). */
+  gamesImportVersion?: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {

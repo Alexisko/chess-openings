@@ -20,7 +20,11 @@ export function setupPosition(fen: string): Chess {
  * so transpositions share the same key.
  */
 export function positionKey(fen: string): string {
-  const pos = setupPosition(fen)
+  return keyOf(setupPosition(fen))
+}
+
+/** Position key of a chessops position (see positionKey). */
+export function keyOf(pos: Chess): string {
   return makeFen(pos.toSetup()).split(' ').slice(0, 4).join(' ')
 }
 
