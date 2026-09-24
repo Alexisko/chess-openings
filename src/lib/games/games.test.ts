@@ -66,6 +66,7 @@ describe('parsing', () => {
     }
     expect(parseLichessGame(base, 'Demyriad')).not.toBeNull()
     expect(parseLichessGame({ ...base, speed: 'bullet' }, 'Demyriad')).toMatchObject({ speed: 'bullet' })
+    expect(parseLichessGame({ ...base, speed: 'correspondence' }, 'Demyriad')).toMatchObject({ speed: 'daily' })
     expect(parseLichessGame({ ...base, speed: 'ultraBullet' }, 'Demyriad')).toBeNull()
     expect(parseLichessGame({ ...base, variant: 'chess960' }, 'Demyriad')).toBeNull()
     expect(parseLichessGame({ ...base, initialFen: '8/8/8/8/8/8/8/8 w - - 0 1' }, 'Demyriad')).toBeNull()
@@ -223,7 +224,7 @@ describe('import', () => {
     expect(await importLichess('Demyriad', 5, opts, d)).toBe(2)
     expect(waits).toEqual([60_000])
     expect(urls[1]).toContain('since=5')
-    expect(urls[1]).toContain('perfType=bullet%2Cblitz%2Crapid%2Cclassical')
+    expect(urls[1]).toContain('perfType=bullet%2Cblitz%2Crapid%2Cclassical%2Ccorrespondence')
     expect(await importLichess('Demyriad', 5, opts, d)).toBe(0)
     expect(await d.games.count()).toBe(2)
   })
@@ -249,7 +250,7 @@ describe('import', () => {
     expect(urls.filter((u) => /\d{4}\/\d{2}$/.test(u)).map((u) => u.slice(-7))).toEqual(['2025/09', '2025/10', '2026/09'])
   })
 
-  it('re-imports the whole window once when stored games predate bullet', async () => {
+  it('re-imports the whole window once when stored games predate the current speeds', async () => {
     const now = Date.UTC(2026, 8, 24)
     await d.games.add(game('white', 'e4 e5', { id: 'lichess:old', source: 'lichess', playedAt: Date.UTC(2026, 8, 20) }))
     const urls: string[] = []

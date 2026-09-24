@@ -168,7 +168,7 @@ function ImportSection({
       }
     >
       <p className="mb-3 text-sm text-muted">
-        Imports your bullet, blitz, rapid and classical games (the first import covers the last 12 months) and compares
+        Imports your bullet, blitz, rapid, classical and daily games (the first import covers the last 12 months) and compares
         them with your repertoires. A repertoire move you got wrong in a game played after its last review is sent back to review.
       </p>
       <div className="mb-3 flex flex-col gap-1 text-sm">

@@ -1,16 +1,16 @@
 import { db, type AppDB, type Game, type GameSource } from '../../db/schema'
 import { getSettings, setSetting } from '../../db/settings'
-import { GAME_SPEEDS, parseChesscomGame, parseLichessGame, type ChesscomGameJson, type LichessGameJson } from './parse'
+import { LICHESS_PERF_TYPES, parseChesscomGame, parseLichessGame, type ChesscomGameJson, type LichessGameJson } from './parse'
 
 /** How far back the first import goes. Later imports only fetch newer games. */
 export const IMPORT_WINDOW_MS = 365 * 24 * 3600 * 1000
 
 /**
  * Bumped when the import fetches games it used to skip (version 2 added
- * bullet). Games stored by an older version are topped up with one full
+ * bullet, version 3 daily). Games stored by an older version are topped up with one full
  * import over the window; games already stored are kept.
  */
-export const IMPORT_VERSION = 2
+export const IMPORT_VERSION = 3
 
 type Fetch = typeof fetch
 type Sleep = (ms: number) => Promise<void>
@@ -88,7 +88,7 @@ export async function importLichess(user: string, since: number, opts: ImportOpt
   const fetchFn = opts.fetchFn ?? ((...a) => fetch(...a))
   const params = new URLSearchParams({
     since: String(since),
-    perfType: GAME_SPEEDS.join(','),
+    perfType: LICHESS_PERF_TYPES.join(','),
     moves: 'true',
     tags: 'false',
     clocks: 'false',
@@ -166,7 +166,7 @@ export async function importChesscom(user: string, since: number, opts: ImportOp
 }
 
 /**
- * Imports new bullet, blitz, rapid and classical games from both sites. The
+ * Imports new bullet, blitz, rapid, classical and daily games from both sites. The
  * first import covers the last year; later ones resume after the newest
  * stored game.
  */

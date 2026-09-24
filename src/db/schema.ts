@@ -72,8 +72,11 @@ export interface ReviewLog {
 }
 
 export type GameSource = 'lichess' | 'chesscom'
-/** Bullet counts here: these are your own games, unlike the explorer statistics. */
-export type GameSpeed = 'bullet' | 'blitz' | 'rapid' | 'classical'
+/**
+ * Bullet and daily count here: these are your own games, unlike the explorer
+ * statistics. 'daily' is Chess.com daily and Lichess correspondence.
+ */
+export type GameSpeed = 'bullet' | 'blitz' | 'rapid' | 'classical' | 'daily'
 
 /** One of the owner's games, imported from Lichess or Chess.com (opening moves only). */
 export interface Game {

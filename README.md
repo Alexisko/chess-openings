@@ -17,7 +17,7 @@ are against the moves real opponents play.
   remember, when opponents choose moves at the explorer's frequencies. The gap list ranks the biggest
   leaks: replies you haven't prepared, lines that end too early, and moves you haven't learned or recall
   poorly.
-- **Your games:** imports your Lichess and Chess.com bullet, blitz, rapid and classical games (the last 12
+- **Your games:** imports your Lichess and Chess.com games at every speed from bullet to daily (the last 12
   months at first, then only new ones) and finds where each game left your preparation. Bullet counts
   here, though not in the explorer statistics: you should know your moves at any speed.
   - Moves you forgot are listed, and one played after the card's last review sends the card back to review.

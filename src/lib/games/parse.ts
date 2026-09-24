@@ -8,8 +8,18 @@ import { setupPosition, START_FEN, type Color } from '../chess/position'
 /** Only the opening matters: moves after this many plies are not stored. */
 export const MAX_PLIES = 40
 
-/** Ultrabullet (Lichess) and daily games (Chess.com) are left out. */
-export const GAME_SPEEDS: GameSpeed[] = ['bullet', 'blitz', 'rapid', 'classical']
+/** Ultrabullet (Lichess) is left out. */
+export const GAME_SPEEDS: GameSpeed[] = ['bullet', 'blitz', 'rapid', 'classical', 'daily']
+
+/** Speeds as each site names them (Lichess calls daily games correspondence). */
+const LICHESS_SPEEDS: Record<string, GameSpeed> = {
+  bullet: 'bullet',
+  blitz: 'blitz',
+  rapid: 'rapid',
+  classical: 'classical',
+  correspondence: 'daily',
+}
+export const LICHESS_PERF_TYPES = Object.keys(LICHESS_SPEEDS)
 const INITIAL_BOARD = START_FEN.split(' ')[0]
 
 /** Converts SAN moves from the initial position to canonical UCI, stopping at the first illegal one. */
@@ -49,7 +59,8 @@ export interface LichessGameJson {
 
 /** A Lichess export row (NDJSON) as a Game, or null if it isn't a usable standard game. */
 export function parseLichessGame(g: LichessGameJson, user: string, t = Date.now()): Game | null {
-  if (g.variant !== 'standard' || g.initialFen || !GAME_SPEEDS.includes(g.speed as GameSpeed)) return null
+  const speed = LICHESS_SPEEDS[g.speed]
+  if (g.variant !== 'standard' || g.initialFen || !speed) return null
   if (g.status === 'aborted' || g.status === 'noStart' || !g.moves) return null
   const color: Color | null = sameUser(g.players.white.user?.id, user) || sameUser(g.players.white.user?.name, user)
     ? 'white'
@@ -65,7 +76,7 @@ export function parseLichessGame(g: LichessGameJson, user: string, t = Date.now(
     source: 'lichess',
     url: `https://lichess.org/${g.id}${color === 'black' ? '/black' : ''}`,
     playedAt: g.createdAt,
-    speed: g.speed as GameSpeed,
+    speed,
     color,
     opponent: opp.user?.name ?? (opp.aiLevel ? `Stockfish level ${opp.aiLevel}` : 'Anonymous'),
     opponentRating: opp.rating,
