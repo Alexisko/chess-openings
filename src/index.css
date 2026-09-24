@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+@import '@lichess-org/chessground/assets/chessground.base.css';
+@import '@lichess-org/chessground/assets/chessground.brown.css';
+@import '@lichess-org/chessground/assets/chessground.cburnett.css';
+
+@theme {
+  --color-bg: #161512;
+  --color-surface: #262421;
+  --color-surface-2: #302e2c;
+  --color-line: #3d3a36;
+  --color-ink: #e8e6e3;
+  --color-muted: #9a9894;
+  --color-accent: #5fb36a;
+  --color-accent-strong: #4a9a55;
+  --color-warn: #d9a441;
+  --color-bad: #d9534f;
+  --color-info: #5b9bd5;
+  --font-sans: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chessground needs explicit dimensions; the wrapper is a square. */
+.board-wrap .cg-wrap {
+  width: 100%;
+  height: 100%;
+}
+
+coords {
+  font-size: 10px;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply btn bg-accent-strong text-white hover:bg-accent;
+}
+@utility btn-ghost {
+  @apply btn bg-surface-2 text-ink hover:bg-line;
+}
+@utility btn-danger {
+  @apply btn bg-bad/80 text-white hover:bg-bad;
+}
+@utility card {
+  @apply rounded-lg border border-line bg-surface;
+}
+@utility input {
+  @apply rounded-md border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-accent;
+}
