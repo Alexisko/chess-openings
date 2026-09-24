@@ -184,8 +184,8 @@ function TrainingSettings({ settings }: { settings: Settings }) {
     <Section title="Training">
       <div className="flex flex-col gap-3">
         <NumberSetting
-          label="Preparedness target (own moves)"
-          hint="Raise it as your score improves to go deeper."
+          label="Preparedness target (your moves)"
+          hint="Counted from each repertoire's starting position. Raise it as your score improves."
           value={settings.prepDepth}
           min={1}
           max={25}

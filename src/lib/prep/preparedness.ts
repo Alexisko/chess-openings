@@ -1,11 +1,13 @@
 import type { ExplorerData } from '../explorer/explorer'
 import { totalGames } from '../explorer/explorer'
-import { isMyTurn, myMove, ROOT_KEY, topoOrder, type RepGraph } from '../chess/graph'
+import { isMyTurn, myMove, topoOrder, type RepGraph } from '../chess/graph'
 
 /**
- * Preparedness@N: the probability that you reach your N-th move while still
- * in preparation you actually remember, when opponents choose their moves with
- * the frequencies found in the opening explorer.
+ * Preparedness@N: the probability that you play N more moves from the
+ * repertoire's starting position while still in preparation you actually
+ * remember, when opponents choose their moves with the frequencies found in
+ * the opening explorer. What happens before the start (e.g. 1...c5 for a
+ * Vienna repertoire) doesn't count.
  *
  *   own move:      P(pos, k) = R(card) × P(child, k − 1)   (0 if no move prepared)
  *   opponent move: P(pos, k) = Σ freq(reply) × P(child, k) (0 for unprepared replies)
@@ -21,7 +23,7 @@ export interface PrepInputs {
   explorer: Map<string, ExplorerData>
   /** Recall probability per own-move position key (0 if never learned). */
   recall: Map<string, number>
-  /** Target: number of own moves. */
+  /** Target: number of own moves after the starting position. */
   depth: number
 }
 
@@ -39,7 +41,7 @@ interface Value {
   d: number
 }
 
-export function preparedness(inp: PrepInputs, from = ROOT_KEY): PrepResult {
+export function preparedness(inp: PrepInputs, from = inp.graph.root): PrepResult {
   const { graph, explorer, recall } = inp
   const memo = new Map<string, Value>()
   const missing = new Set<string>()
@@ -129,7 +131,7 @@ export function findGaps(inp: PrepInputs, minReach = 0.001): Gap[] {
       cur.own = Math.min(cur.own, own)
     } else reach.set(key, { p, own })
   }
-  add(ROOT_KEY, 1, 0)
+  add(graph.root, 1, 0)
   const gaps: Gap[] = []
 
   for (const key of topoOrder(graph)) {
@@ -188,6 +190,6 @@ export function positionsNeedingData(graph: RepGraph, depth: number): string[] {
       for (const m of graph.movesFrom.get(key) ?? []) walk(m.toKey, own)
     }
   }
-  walk(ROOT_KEY, 0)
+  walk(graph.root, 0)
   return out
 }

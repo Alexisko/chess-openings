@@ -3,13 +3,16 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { ColorDot, Section } from '../../components/ui'
-import { createRepertoire } from '../../db/repertoire'
+import { createRepertoire, findOverlaps } from '../../db/repertoire'
 import { learnedToday } from '../../db/reviews'
 import { db, type Repertoire } from '../../db/schema'
 import { useSettings, type Settings } from '../../db/settings'
 import { useRepertoire, useRepertoires } from '../../db/useRepertoire'
 import { startLogin } from '../../lib/auth/lichess'
+import { formatMoves } from '../../lib/chess/position'
+import { parseMoves, repStart } from '../../lib/chess/start'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
+import { builderUrl } from '../../lib/routes'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 
 export function HomePage() {
@@ -28,7 +31,7 @@ export function HomePage() {
 
   return (
     // On phones: Today, Repertoires, New. On wider screens the repertoire list gets its own column.
-    <div className="grid gap-4 md:grid-cols-[1fr_1.4fr] md:items-start">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] md:items-start">
       <div className="flex flex-col gap-4">
         {settings && !settings.lichessToken && (
           <div className="card border-warn/50 p-3 text-sm">
@@ -97,14 +100,15 @@ function RepertoireRow({ rep, settings }: { rep: Repertoire; settings: Settings 
         <ColorDot color={rep.color} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium">{rep.name}</div>
-          <div className="text-xs text-muted">
+          <div className="truncate text-xs text-muted">
+            {repStart(rep).moves.length > 0 && <>from {formatMoves(repStart(rep).sans)} · </>}
             {data?.lines.length ?? 0} lines · {data?.cards.length ?? 0} moves · {due} due
           </div>
         </div>
         {prep && data && data.moves.length > 0 && (
           <div className="text-right">
             <div className={`text-lg font-semibold ${scoreColor(prep.result.score)}`}>{pct(prep.result.score)}</div>
-            <div className="text-[10px] text-muted">prepared @ move {settings.prepDepth}</div>
+            <div className="text-[10px] text-muted">prepared, {settings.prepDepth} moves deep</div>
           </div>
         )}
       </Link>
@@ -115,17 +119,50 @@ function RepertoireRow({ rep, settings }: { rep: Repertoire; settings: Settings 
 function NewRepertoire() {
   const [name, setName] = useState('')
   const [color, setColor] = useState<'white' | 'black'>('white')
+  const [startText, setStartText] = useState('')
+  const [error, setError] = useState<string>()
   const navigate = useNavigate()
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rep = await createRepertoire(name.trim() || (color === 'white' ? 'White repertoire' : 'Black repertoire'), color)
+    let startMoves: string[]
+    try {
+      startMoves = parseMoves(startText)
+    } catch (err) {
+      return setError((err as Error).message)
+    }
+    const overlaps = await findOverlaps(color, startMoves)
+    if (
+      overlaps.length &&
+      !confirm(
+        `This overlaps with ${overlaps.map((r) => `"${r.name}"`).join(', ')}: the same positions would be in two ` +
+          'repertoires and be drilled twice. Create it anyway?',
+      )
+    )
+      return
+    const fallback = color === 'white' ? 'White repertoire' : 'Black repertoire'
+    const rep = await createRepertoire(name.trim() || fallback, color, undefined, startMoves)
     setName('')
-    navigate(`/rep/${rep.id}/build`)
+    setStartText('')
+    navigate(builderUrl(rep.id, startMoves))
   }
   return (
     <Section title="New repertoire">
       <form onSubmit={submit} className="flex flex-col gap-2">
-        <input className="input" placeholder="Name (e.g. 1.e4 main)" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder="Vienna Game" value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Starts after (optional)
+          <input
+            className="input"
+            placeholder="1.e4 e5 2.Nc3"
+            value={startText}
+            onChange={(e) => {
+              setStartText(e.target.value)
+              setError(undefined)
+            }}
+          />
+          <span>These moves are set up, not drilled, and your score only counts what happens after them.</span>
+        </label>
+        {error && <p className="text-sm text-bad">{error}</p>}
         <div className="flex gap-2">
           {(['white', 'black'] as const).map((c) => (
             <button

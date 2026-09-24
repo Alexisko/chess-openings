@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState } from 'react'
 import { db } from '../../db/schema'
 import type { RepertoireData } from '../../db/useRepertoire'
-import { isMyTurn, myMove, ROOT_KEY } from '../chess/graph'
+import { isMyTurn, myMove } from '../chess/graph'
 import { keyToFen } from '../chess/position'
 import { AuthRequiredError, explorer, filterHash, totalGames, type ExplorerData, type ExplorerFilter } from '../explorer'
 import { retrievability } from '../srs/scheduler'
@@ -85,14 +85,15 @@ export function usePreparedness(
     const gaps = findGaps(inp)
 
     // Scores per first opponent reply (e.g. "vs 1...c5").
-    let branchFrom: string | undefined = ROOT_KEY
-    if (isMyTurn(data.graph, ROOT_KEY)) branchFrom = myMove(data.graph, ROOT_KEY)?.toKey
+    const root = data.graph.root
+    let branchFrom: string | undefined = root
+    if (isMyTurn(data.graph, root)) branchFrom = myMove(data.graph, root)?.toKey
     const branches: Branch[] = []
     const ex = branchFrom ? cached.get(branchFrom) : undefined
     for (const m of branchFrom ? (data.graph.movesFrom.get(branchFrom) ?? []) : []) {
       const games = ex?.moves.find((x) => x.uci === m.uci)
       const share = ex ? (games ? totalGames(games) / Math.max(1, totalGames(ex)) : 0) : null
-      const ownBefore = isMyTurn(data.graph, ROOT_KEY) ? 1 : 0
+      const ownBefore = isMyTurn(data.graph, root) ? 1 : 0
       const sub = preparedness({ ...inp, depth: depth - ownBefore }, m.toKey)
       branches.push({ san: m.san, uci: m.uci, toKey: m.toKey, share, score: sub.score })
     }

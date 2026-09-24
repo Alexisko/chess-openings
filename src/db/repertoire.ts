@@ -1,11 +1,17 @@
 import { createEmptyCard } from 'ts-fsrs'
 import { buildGraph, cardPositions, movesToRemove } from '../lib/chess/graph'
-import { playUci, positionKey, START_FEN, turnOf, type Color } from '../lib/chess/position'
+import { playUci, positionKey, turnOf, type Color } from '../lib/chess/position'
+import { repStart, startOf, startsWith } from '../lib/chess/start'
 import { db, now, uuid, type AppDB, type RepMove, type Repertoire } from './schema'
 
-export async function createRepertoire(name: string, color: Color, d: AppDB = db): Promise<Repertoire> {
+export async function createRepertoire(
+  name: string,
+  color: Color,
+  d: AppDB = db,
+  startMoves: string[] = [],
+): Promise<Repertoire> {
   const t = now()
-  const rep: Repertoire = { id: uuid(), name, color, createdAt: t, updatedAt: t }
+  const rep: Repertoire = { id: uuid(), name, color, startMoves: startOf(startMoves).moves, createdAt: t, updatedAt: t }
   await d.repertoires.add(rep)
   return rep
 }
@@ -47,23 +53,32 @@ export interface AddLineResult {
   added: RepMove[]
 }
 
+export class OutsideRepertoireError extends Error {
+  constructor(startSans: string[]) {
+    super(`This line doesn't start with the repertoire's starting moves (${startSans.join(' ')})`)
+  }
+}
+
 /**
- * Adds a line of moves (UCI from `startFen`) to a repertoire. Moves already
- * present are reused. Throws MoveConflictError if one of the owner's moves
- * differs from the repertoire, unless `replace` is set, in which case the old
- * move and everything only reachable through it is removed.
+ * Adds a line of moves (UCI from the initial position) to a repertoire. The
+ * repertoire's starting moves are skipped; the line must begin with them.
+ * Moves already present are reused. Throws MoveConflictError if one of the
+ * owner's moves differs from the repertoire, unless `replace` is set, in which
+ * case the old move and everything only reachable through it is removed.
  */
 export async function addLine(
   rep: Repertoire,
   uciMoves: string[],
-  opts: { startFen?: string; replace?: boolean } = {},
+  opts: { replace?: boolean } = {},
   d: AppDB = db,
 ): Promise<AddLineResult> {
+  const start = repStart(rep)
+  if (!startsWith(uciMoves, start.moves)) throw new OutsideRepertoireError(start.sans)
   return d.transaction('rw', [d.moves, d.cards, d.repertoires], async () => {
     const added: RepMove[] = []
     let moves = await loadMoves(rep.id, d)
-    let fen = opts.startFen ?? START_FEN
-    for (const uci of uciMoves) {
+    let fen = start.fen
+    for (const uci of uciMoves.slice(start.moves.length)) {
       const played = playUci(fen, uci)
       if (!played) throw new Error(`Illegal move ${uci}`)
       const fromKey = positionKey(fen)
@@ -108,7 +123,7 @@ export async function addLine(
 export async function removeMoves(rep: Repertoire, ids: Set<string>, d: AppDB = db): Promise<RepMove[]> {
   return d.transaction('rw', [d.moves, d.cards, d.repertoires], async () => {
     const moves = await loadMoves(rep.id, d)
-    const gone = movesToRemove(moves, rep.color, ids)
+    const gone = movesToRemove(moves, rep.color, ids, repStart(rep).key)
     await d.moves.bulkDelete(gone.map((m) => m.id))
     await reconcileCards(rep, d)
     await d.repertoires.update(rep.id, { updatedAt: now() })
@@ -119,13 +134,13 @@ export async function removeMoves(rep: Repertoire, ids: Set<string>, d: AppDB = 
 /** Preview of what removing a move would delete (for confirmation dialogs). */
 export async function previewRemoval(rep: Repertoire, id: string, d: AppDB = db): Promise<RepMove[]> {
   const moves = await loadMoves(rep.id, d)
-  return movesToRemove(moves, rep.color, new Set([id]))
+  return movesToRemove(moves, rep.color, new Set([id]), repStart(rep).key)
 }
 
 /** Ensures there is exactly one card per position where the owner has a move. */
 export async function reconcileCards(rep: Repertoire, d: AppDB = db) {
   const moves = await loadMoves(rep.id, d)
-  const wanted = new Set(cardPositions(buildGraph(moves, rep.color)))
+  const wanted = new Set(cardPositions(buildGraph(moves, rep.color, repStart(rep).key)))
   const cards = await d.cards.where({ repertoireId: rep.id }).toArray()
   const have = new Set(cards.map((c) => c.positionKey))
   const stale = cards.filter((c) => !wanted.has(c.positionKey)).map((c) => c.id)
@@ -142,6 +157,55 @@ export async function reconcileCards(rep: Repertoire, d: AppDB = db) {
       updatedAt: t,
     }))
   if (fresh.length) await d.cards.bulkAdd(fresh)
+}
+
+/** Moves that would be deleted if the repertoire started at `startMoves` instead. */
+export async function previewStartChange(rep: Repertoire, startMoves: string[], d: AppDB = db): Promise<RepMove[]> {
+  const moves = await loadMoves(rep.id, d)
+  return movesToRemove(moves, rep.color, new Set(), startOf(startMoves).key)
+}
+
+/**
+ * Moves the repertoire's starting position. Moves that are no longer reachable
+ * from it (the setup moves and branches outside it) are deleted with their cards.
+ */
+export async function setRepertoireStart(rep: Repertoire, startMoves: string[], d: AppDB = db): Promise<Repertoire> {
+  const updated: Repertoire = { ...rep, startMoves: startOf(startMoves).moves, updatedAt: now() }
+  await d.transaction('rw', [d.moves, d.cards, d.repertoires], async () => {
+    const gone = await previewStartChange(rep, startMoves, d)
+    await d.moves.bulkDelete(gone.map((m) => m.id))
+    await d.repertoires.put(updated)
+    await reconcileCards(updated, d)
+  })
+  return updated
+}
+
+/**
+ * Other repertoires of the same colour that would overlap with one starting at
+ * `startMoves`: either they already contain that position, or they start
+ * inside it (their start comes after these moves).
+ */
+export async function findOverlaps(
+  color: Color,
+  startMoves: string[],
+  excludeId?: string,
+  d: AppDB = db,
+): Promise<Repertoire[]> {
+  const key = startOf(startMoves).key
+  const others = (await d.repertoires.toArray())
+    .filter((r) => r.color === color && r.id !== excludeId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+  const out: Repertoire[] = []
+  for (const r of others) {
+    const theirStart = repStart(r)
+    if (startsWith(theirStart.moves, startMoves)) {
+      out.push(r)
+      continue
+    }
+    const g = buildGraph(await loadMoves(r.id, d), r.color, theirStart.key)
+    if (g.depth.has(key)) out.push(r)
+  }
+  return out
 }
 
 export async function setMoveComment(id: string, comment: string, d: AppDB = db) {

@@ -41,6 +41,17 @@ coords {
   font-size: 10px;
 }
 
+/* Chessground offsets the file letters 24px to the right, which overflows narrow screens.
+   Keep each letter inside the bottom-right corner of its square instead. */
+.board-wrap coords.files {
+  left: 0;
+}
+.board-wrap coords.files coord {
+  flex: 1 1 0;
+  text-align: right;
+  padding-right: 3px;
+}
+
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40;
 }

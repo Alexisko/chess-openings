@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
 import type { Card as FsrsCard } from 'ts-fsrs'
 import { buildGraph, enumerateLines, type Line, type RepGraph } from '../lib/chess/graph'
+import { repStart } from '../lib/chess/start'
 import { db, type Card, type RepMove, type Repertoire } from './schema'
 
 export interface RepertoireData {
@@ -28,7 +29,7 @@ export function useRepertoire(id: string | undefined): RepertoireData | null | u
   }, [id])
   return useMemo(() => {
     if (!raw) return raw
-    const graph = buildGraph(raw.moves, raw.rep.color)
+    const graph = buildGraph(raw.moves, raw.rep.color, repStart(raw.rep).key)
     return {
       ...raw,
       graph,

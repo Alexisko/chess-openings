@@ -14,6 +14,8 @@ export const ROOT_KEY = positionKey(START_FEN)
  */
 export interface RepGraph {
   color: Color
+  /** Position the repertoire starts from (its lines begin here). */
+  root: string
   movesFrom: Map<string, RepMove[]>
   /** Canonical incoming move for every reachable position (root excluded). */
   parent: Map<string, RepMove>
@@ -25,7 +27,7 @@ export interface RepGraph {
   order: string[]
 }
 
-export function buildGraph(moves: RepMove[], color: Color): RepGraph {
+export function buildGraph(moves: RepMove[], color: Color, root = ROOT_KEY): RepGraph {
   const movesFrom = new Map<string, RepMove[]>()
   const sorted = [...moves].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
   for (const m of sorted) {
@@ -35,9 +37,9 @@ export function buildGraph(moves: RepMove[], color: Color): RepGraph {
   }
 
   const parent = new Map<string, RepMove>()
-  const depth = new Map<string, number>([[ROOT_KEY, 0]])
+  const depth = new Map<string, number>([[root, 0]])
   const transpositions = new Set<string>()
-  const order = [ROOT_KEY]
+  const order = [root]
   for (let i = 0; i < order.length; i++) {
     const key = order[i]
     for (const m of movesFrom.get(key) ?? []) {
@@ -50,7 +52,7 @@ export function buildGraph(moves: RepMove[], color: Color): RepGraph {
       order.push(m.toKey)
     }
   }
-  return { color, movesFrom, parent, depth, transpositions, order }
+  return { color, root, movesFrom, parent, depth, transpositions, order }
 }
 
 export function isMyTurn(g: RepGraph, key: string): boolean {
@@ -63,11 +65,11 @@ export function myMove(g: RepGraph, key: string): RepMove | undefined {
   return g.movesFrom.get(key)?.[0]
 }
 
-/** Canonical moves from the root to a position. */
+/** Canonical moves from the repertoire's start to a position. */
 export function pathTo(g: RepGraph, key: string): RepMove[] {
   const path: RepMove[] = []
   let cur = key
-  while (cur !== ROOT_KEY) {
+  while (cur !== g.root) {
     const m = g.parent.get(cur)
     if (!m) return []
     path.push(m)
@@ -105,7 +107,7 @@ export function enumerateLines(g: RepGraph): Line[] {
     }
     for (const m of tree) walk(m.toKey, [...path, m])
   }
-  walk(ROOT_KEY, [])
+  walk(g.root, [])
   return lines
 }
 
@@ -130,9 +132,9 @@ export function cardPositions(g: RepGraph): string[] {
  * move left unreachable from the root. Positions still reachable through a
  * transposition are kept.
  */
-export function movesToRemove(moves: RepMove[], color: Color, removeIds: Set<string>): RepMove[] {
+export function movesToRemove(moves: RepMove[], color: Color, removeIds: Set<string>, root = ROOT_KEY): RepMove[] {
   const kept = moves.filter((m) => !removeIds.has(m.id))
-  const g = buildGraph(kept, color)
+  const g = buildGraph(kept, color, root)
   return moves.filter((m) => removeIds.has(m.id) || !g.depth.has(m.fromKey))
 }
 

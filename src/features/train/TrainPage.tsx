@@ -6,6 +6,7 @@ import { recordAttempt, learnedToday } from '../../db/reviews'
 import { db, type Repertoire, type ReviewMode } from '../../db/schema'
 import { getSettings } from '../../db/settings'
 import { buildGraph, enumerateLines, type Line } from '../../lib/chess/graph'
+import { repStart } from '../../lib/chess/start'
 import { formatMoves, moveSquares, playUci } from '../../lib/chess/position'
 import { filterHash, totalGames, type ExplorerData } from '../../lib/explorer'
 import { planDrill, planLearn, planReview, type PlannedRun } from '../../lib/srs/plan'
@@ -32,7 +33,7 @@ async function buildQueue(mode: ReviewMode, repId: string | null, extraNew: numb
       db.moves.where({ repertoireId: rep.id }).toArray(),
       db.cards.where({ repertoireId: rep.id }).toArray(),
     ])
-    const lines = enumerateLines(buildGraph(moves, rep.color))
+    const lines = enumerateLines(buildGraph(moves, rep.color, repStart(rep).key))
     const cardMap = new Map(cards.map((c) => [c.positionKey, c.fsrs]))
     let runs: PlannedRun[] = []
     if (mode === 'review') runs = planReview(lines, cardMap, now)
@@ -177,6 +178,9 @@ function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
 
   const { rep } = current
   const line = current.run.line
+  // Moves so far, including the repertoire's setup moves (e.g. 1.e4 e5 2.Nc3), numbered correctly.
+  const start = repStart(rep)
+  const lineText = (ply: number) => formatMoves([...start.sans, ...line.moves.slice(0, ply).map((m) => m.san)])
   const fen = fens[run.ply]
   const prev = run.ply > 0 ? line.moves[run.ply - 1] : undefined
   const lastMove = prev ? (moveSquares(prev.fromFen, prev.uci) ?? undefined) : undefined
@@ -204,7 +208,7 @@ function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
         setStats((s) => ({
           ...s,
           wrong: s.wrong + 1,
-          mistakes: [...s.mistakes, formatMoves(line.moves.slice(0, run.ply + 1).map((m) => m.san))],
+          mistakes: [...s.mistakes, lineText(run.ply + 1)],
         }))
         await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
       }
@@ -217,7 +221,7 @@ function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
   const giveUp = () => onMove('0000')
 
   return (
-    <div className="grid gap-4 md:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-sm">
           <ColorDot color={rep.color} />
@@ -252,7 +256,7 @@ function Session({ mode, queue }: { mode: ReviewMode; queue: QueuedRun[] }) {
         </div>
         <div className="text-sm">
           <div className="mb-1 text-xs text-muted">Line so far</div>
-          {formatMoves(line.moves.slice(0, run.ply).map((m) => m.san)) || '—'}
+          {lineText(run.ply) || '—'}
           {line.end === 'transposition' && run.finished && (
             <p className="mt-1 text-xs text-muted">↪ This line transposes into another one you know.</p>
           )}

@@ -3,7 +3,7 @@ import { ChildNode, defaultGame, makePgn, parsePgn, startingPosition, type Node,
 import { parseSan } from 'chessops/san'
 import { makeUci } from 'chessops/util'
 import type { RepMove } from '../../db/schema'
-import { ROOT_KEY, type RepGraph } from './graph'
+import type { RepGraph } from './graph'
 
 /**
  * Extracts every root-to-leaf line (as UCI lists from the standard start) from
@@ -31,7 +31,7 @@ export function pgnToLines(text: string): { lines: string[][]; errors: string[] 
       for (const child of node.children) {
         const move = parseSan(pos, child.data.san)
         if (!move) {
-          errors.push(`Illegal move ${child.data.san} after ${path.length} plies`)
+          errors.push(`Illegal move ${child.data.san} at move ${Math.floor(path.length / 2) + 1}`)
           if (path.length) lines.push(path)
           continue
         }
@@ -45,8 +45,11 @@ export function pgnToLines(text: string): { lines: string[][]; errors: string[] 
   return { lines, errors }
 }
 
-/** Exports a repertoire as a single PGN game with variations. */
-export function graphToPgn(g: RepGraph, name: string): string {
+/**
+ * Exports a repertoire as a single PGN game with variations. The starting
+ * moves (SAN) come first so the PGN replays from the initial position.
+ */
+export function graphToPgn(g: RepGraph, name: string, startSans: string[] = []): string {
   const game = defaultGame<PgnNodeData>()
   game.headers.set('Event', name)
   game.headers.set('Site', 'Opening Trainer')
@@ -58,7 +61,13 @@ export function graphToPgn(g: RepGraph, name: string): string {
       if (!g.transpositions.has(m.id)) visit(m.toKey, child)
     }
   }
-  visit(ROOT_KEY, game.moves)
+  let start: Node<PgnNodeData> = game.moves
+  for (const san of startSans) {
+    const child = new ChildNode<PgnNodeData>({ san })
+    start.children.push(child)
+    start = child
+  }
+  visit(g.root, start)
   return makePgn(game)
 }
 

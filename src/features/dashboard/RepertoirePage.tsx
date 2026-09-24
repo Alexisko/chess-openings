@@ -2,12 +2,13 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { ColorDot, Section } from '../../components/ui'
-import { addLine, deleteRepertoire, MoveConflictError, renameRepertoire } from '../../db/repertoire'
+import { addLine, deleteRepertoire, MoveConflictError, OutsideRepertoireError, renameRepertoire } from '../../db/repertoire'
 import { useSettings } from '../../db/settings'
 import { useRepertoire, type RepertoireData } from '../../db/useRepertoire'
 import { pathTo } from '../../lib/chess/graph'
 import { graphToPgn, pgnToLines } from '../../lib/chess/pgn'
 import { formatMoves } from '../../lib/chess/position'
+import { repStart } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
 import type { Gap } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
@@ -49,9 +50,15 @@ export function RepertoirePage() {
         >
           {rep.name}
         </h1>
+        {repStart(rep).moves.length > 0 && (
+          <span className="text-sm text-muted">from {formatMoves(repStart(rep).sans)}</span>
+        )}
         <div className="ml-auto flex flex-wrap gap-2">
           <Link className="btn-primary" to={builderUrl(rep.id, [])}>
             Open builder
+          </Link>
+          <Link className="btn-ghost" to={`/rep/${rep.id}/tree`}>
+            Overview
           </Link>
           <Link className={`btn-ghost ${due ? '' : 'pointer-events-none opacity-40'}`} to={`/train?mode=review&rep=${rep.id}`}>
             Review ({due})
@@ -65,8 +72,8 @@ export function RepertoirePage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Section title={`Preparedness @ move ${settings.prepDepth}`}>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
+        <Section title={`Preparedness, ${settings.prepDepth} moves deep`}>
           {!prep ? (
             <p className="text-sm text-muted">Calculating…</p>
           ) : (
@@ -75,7 +82,7 @@ export function RepertoirePage() {
                 <div>
                   <div className={`text-4xl font-semibold ${scoreColor(prep.result.score)}`}>{pct(prep.result.score)}</div>
                   <div className="text-xs text-muted">
-                    chance to reach move {settings.prepDepth} inside remembered prep
+                    chance to play {settings.prepDepth} moves from the start without leaving remembered prep
                   </div>
                 </div>
                 <div>
@@ -148,9 +155,10 @@ function GapList({ data, gaps }: { data: RepertoireData; gaps: Gap[] }) {
   return (
     <ul className="flex flex-col gap-1.5 text-sm">
       {gaps.map((g, i) => {
+        const start = repStart(data.rep)
         const path = pathTo(data.graph, g.key)
-        const uci = path.map((m) => m.uci)
-        const sans = path.map((m) => m.san)
+        const uci = [...start.moves, ...path.map((m) => m.uci)]
+        const sans = [...start.sans, ...path.map((m) => m.san)]
         if (g.uci && g.san) {
           uci.push(g.uci)
           sans.push(g.san)
@@ -161,7 +169,7 @@ function GapList({ data, gaps }: { data: RepertoireData; gaps: Gap[] }) {
             <div className="min-w-0 flex-1">
               <div className="truncate">{formatMoves(sans) || 'Starting position'}</div>
               <div className="text-xs text-muted">
-                {GAP_LABEL[g.kind]} · reached in {pct(g.reach, 1)} of games
+                {GAP_LABEL[g.kind]} · {pct(g.reach, 1)} of games
               </div>
             </div>
             <Link
@@ -182,7 +190,7 @@ function PgnTools({ data }: { data: RepertoireData }) {
   const [msg, setMsg] = useState<string>()
 
   const exportPgn = () => {
-    const pgn = graphToPgn(data.graph, data.rep.name)
+    const pgn = graphToPgn(data.graph, data.rep.name, repStart(data.rep).sans)
     const url = URL.createObjectURL(new Blob([pgn], { type: 'application/x-chess-pgn' }))
     const a = document.createElement('a')
     a.href = url
@@ -194,12 +202,14 @@ function PgnTools({ data }: { data: RepertoireData }) {
   const importPgn = async (file: File) => {
     const { lines, errors } = pgnToLines(await file.text())
     let added = 0
+    let outside = 0
     const conflicts: string[] = []
     for (const l of lines) {
       try {
         added += (await addLine(data.rep, l)).added.length
       } catch (e) {
         if (e instanceof MoveConflictError) conflicts.push(e.message)
+        else if (e instanceof OutsideRepertoireError) outside++
         else errors.push((e as Error).message)
       }
     }
@@ -207,6 +217,7 @@ function PgnTools({ data }: { data: RepertoireData }) {
       [
         `Added ${added} moves from ${lines.length} lines.`,
         conflicts.length ? `${conflicts.length} lines skipped because they contradict your moves.` : '',
+        outside ? `${outside} lines skipped because they don't start with this repertoire's starting moves.` : '',
         errors.length ? `${errors.length} problems: ${errors.slice(0, 3).join('; ')}` : '',
       ]
         .filter(Boolean)

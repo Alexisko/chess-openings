@@ -9,6 +9,13 @@ export interface Repertoire {
   id: string
   name: string
   color: Color
+  /**
+   * Moves (UCI, from the initial position) leading to where this repertoire
+   * starts, e.g. 1.e4 e5 2.Nc3 for a Vienna repertoire. They are set up, not
+   * drilled, and scores are measured from the position they reach. Missing on
+   * repertoires created before this existed, meaning the initial position.
+   */
+  startMoves?: string[]
   createdAt: number
   updatedAt: number
 }

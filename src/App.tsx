@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useSettings } from './db/settings'
 import { BuilderPage } from './features/builder/BuilderPage'
 import { HomePage } from './features/dashboard/HomePage'
+import { OverviewPage } from './features/overview/OverviewPage'
 import { RepertoirePage } from './features/dashboard/RepertoirePage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { TrainPage } from './features/train/TrainPage'
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/rep/:id" element={<RepertoirePage />} />
           <Route path="/rep/:id/build" element={<BuilderPage />} />
+          <Route path="/rep/:id/tree" element={<OverviewPage />} />
           <Route path="/train" element={<TrainPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
