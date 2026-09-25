@@ -1,56 +1,41 @@
-import { db, type AppDB, type Card } from './schema'
+import { db, type AppDB } from './schema'
+import { LOCAL_SETTINGS, parseSnapshot, readSnapshot, snapshotTables, type Snapshot } from './snapshot'
 
 const VERSION = 1
 
-/** Everything except caches and the Lichess token. */
-export async function exportBackup(d: AppDB = db): Promise<string> {
-  const [repertoires, positions, moves, cards, reviews, settings] = await Promise.all([
-    d.repertoires.toArray(),
-    d.positions.toArray(),
-    d.moves.toArray(),
-    d.cards.toArray(),
-    d.reviews.toArray(),
-    d.settings.toArray(),
-  ])
-  return JSON.stringify({
-    app: 'opening-trainer',
-    version: VERSION,
-    exportedAt: new Date().toISOString(),
-    repertoires,
-    positions,
-    moves,
-    cards,
-    reviews,
-    settings: settings.filter((s) => s.key !== 'lichessToken'),
-  })
-}
+/** A snapshot in the backup format (also the format of the synced copy). */
+export const toBackupJson = (snap: Snapshot) =>
+  JSON.stringify({ app: 'opening-trainer', version: VERSION, exportedAt: new Date().toISOString(), ...snap })
 
-const reviveCard = (c: Card): Card => ({
-  ...c,
-  fsrs: {
-    ...c.fsrs,
-    due: new Date(c.fsrs.due),
-    last_review: c.fsrs.last_review ? new Date(c.fsrs.last_review) : undefined,
-  },
-})
-
-/** Replaces all data with a backup (keeps the current Lichess login). */
-export async function importBackup(json: string, d: AppDB = db) {
+export function parseBackup(json: string): Snapshot {
   const data = JSON.parse(json)
   if (data.app !== 'opening-trainer') throw new Error('This is not an Opening Trainer backup')
   if (data.version > VERSION) throw new Error('This backup comes from a newer version of the app')
-  const tables = [d.repertoires, d.positions, d.moves, d.cards, d.reviews, d.settings]
-  await d.transaction('rw', tables, async () => {
-    const token = await d.settings.get('lichessToken')
-    const user = await d.settings.get('lichessUser')
-    await Promise.all(tables.map((t) => t.clear()))
-    await d.repertoires.bulkAdd(data.repertoires)
-    await d.positions.bulkAdd(data.positions)
-    await d.moves.bulkAdd(data.moves)
-    await d.cards.bulkAdd((data.cards as Card[]).map(reviveCard))
-    await d.reviews.bulkAdd(data.reviews)
-    await d.settings.bulkPut(data.settings.filter((s: { key: string }) => s.key !== 'lichessToken'))
-    if (token) await d.settings.put(token)
-    if (user) await d.settings.put(user)
+  return parseSnapshot(data)
+}
+
+/** Everything except caches, games and the Lichess login. */
+export async function exportBackup(d: AppDB = db): Promise<string> {
+  return toBackupJson(await readSnapshot(d))
+}
+
+/** Replaces all data with a backup (keeps the settings that belong to this device). */
+export async function importBackup(json: string, d: AppDB = db) {
+  const snap = parseBackup(json)
+  await d.transaction('rw', snapshotTables(d), async () => {
+    await Promise.all([
+      d.repertoires.clear(),
+      d.positions.clear(),
+      d.moves.clear(),
+      d.cards.clear(),
+      d.reviews.clear(),
+      d.settings.where('key').noneOf([...LOCAL_SETTINGS]).delete(),
+    ])
+    await d.repertoires.bulkAdd(snap.repertoires)
+    await d.positions.bulkAdd(snap.positions)
+    await d.moves.bulkAdd(snap.moves)
+    await d.cards.bulkAdd(snap.cards)
+    await d.reviews.bulkAdd(snap.reviews)
+    await d.settings.bulkPut(snap.settings)
   })
 }

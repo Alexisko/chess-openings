@@ -25,3 +25,7 @@ dist-ssr
 
 # Copied from node_modules by scripts/copy-stockfish.mjs
 public/stockfish
+
+# Cloudflare Worker local state
+.wrangler
+worker/worker-configuration.d.ts
