@@ -15,6 +15,8 @@ are against the moves real opponents play.
   - Home shows each colour's coverage, overall preparedness and next choice to make.
 - **Builder:** play moves on the board next to the Lichess opening explorer (filtered by time control,
   rating or the masters database) and Stockfish.
+  - A Lichess / Masters switch on the explorer panel shows the other database for a quick look. It only changes
+    the panel: scores and the move tree keep the filter from Settings, whose ratings and speeds stay as they are.
   - The engine warns when a repertoire move is clearly worse than its best move.
   - Transpositions are detected and cut.
   - Every position can have notes on its ideas and plans.

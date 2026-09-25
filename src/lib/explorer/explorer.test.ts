@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AppDB } from '../../db/schema'
 import { replay, START_FEN } from '../chess/position'
-import { AuthRequiredError, DEFAULT_FILTER, ExplorerClient, explorerUrl, filterHash, RequestQueue } from './explorer'
+import {
+  AuthRequiredError,
+  DEFAULT_FILTER,
+  describeFilter,
+  ExplorerClient,
+  explorerUrl,
+  filterHash,
+  ratingRanges,
+  RequestQueue,
+} from './explorer'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 
@@ -65,5 +74,21 @@ describe('ExplorerClient', () => {
     expect(filterHash({ db: 'lichess', speeds: ['rapid', 'blitz'], ratings: [2000, 1600] })).toBe(
       filterHash({ db: 'lichess', speeds: ['blitz', 'rapid'], ratings: [1600, 2000] }),
     )
+  })
+})
+
+describe('describeFilter', () => {
+  it('joins neighbouring rating buckets into ranges', () => {
+    expect(ratingRanges([1600, 1800, 2000])).toBe('1600–2199')
+    expect(ratingRanges([2000, 1000, 1600])).toBe('1000–1199, 1600–1799, 2000–2199')
+    expect(ratingRanges([2200, 2500])).toBe('2200+')
+    expect(ratingRanges([2000, 2500])).toBe('2000–2199, 2500+')
+    expect(ratingRanges([400])).toBe('400–999')
+  })
+
+  it('describes the Lichess filter and the masters database', () => {
+    expect(describeFilter(DEFAULT_FILTER)).toBe('Lichess players rated 1600–2199 · blitz, rapid, classical')
+    expect(describeFilter({ ...DEFAULT_FILTER, speeds: ['rapid', 'blitz'] })).toMatch(/· blitz, rapid$/)
+    expect(describeFilter({ ...DEFAULT_FILTER, db: 'masters' })).toMatch(/^Masters/)
   })
 })
