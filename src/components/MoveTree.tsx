@@ -51,20 +51,24 @@ export function MoveTree({ root, current, onJump, share }: Props) {
     return (
       <span key={id(node.path)} className="inline-flex items-baseline">
         {(showNumber || (node.ply - 1) % 2 === 0) && (
-          <span className="mr-0.5 text-muted">{moveNumber(node.ply - 1, showNumber)}</span>
+          <span className="mr-0.5 text-faint tabular-nums">{moveNumber(node.ply - 1, showNumber)}</span>
         )}
         <button
           ref={isCurrent ? currentRef : undefined}
           onClick={() => onJump(node.path)}
           title={node.draft ? 'Not saved yet' : node.comment || undefined}
-          className={`rounded px-1 ${isCurrent ? 'bg-accent-strong text-white' : 'hover:bg-surface-2'} ${
-            node.draft ? 'border border-dashed border-warn/70 italic text-warn' : ''
-          }`}
+          className={`rounded-md px-1.5 transition-colors ${
+            isCurrent
+              ? 'bg-maple font-semibold text-on-maple shadow-[0_1px_0_rgb(0_0_0/0.4)]'
+              : node.byMe
+                ? 'font-medium hover:bg-surface-3'
+                : 'text-ink/85 hover:bg-surface-3'
+          } ${node.draft ? `border border-dashed border-warn/70 italic ${isCurrent ? '' : 'text-warn'}` : ''}`}
         >
           {node.san}
           {node.transposition && <span title="Transposes to another line"> ↪</span>}
         </button>
-        {s !== undefined && <span className="ml-0.5 text-[10px] text-muted">{pct(s)}</span>}
+        {s !== undefined && <span className="ml-0.5 text-[10px] text-faint tabular-nums">{pct(s)}</span>}
       </span>
     )
   }
@@ -99,7 +103,7 @@ export function MoveTree({ root, current, onJump, share }: Props) {
     const defaultOpen = level < 2 || containsCurrent(v)
     const open = toggled.has(key) ? !defaultOpen : defaultOpen
     return (
-      <div key={key} className="my-0.5 ml-2 border-l-2 border-line pl-2">
+      <div key={key} className="my-0.5 ml-2 border-l border-line-strong/70 pl-2.5">
         {open ? (
           line(v, level, false, [
             ...(level >= 2
@@ -117,7 +121,7 @@ export function MoveTree({ root, current, onJump, share }: Props) {
             move(parent, v, true),
           ])
         ) : (
-          <button className="text-xs text-muted hover:text-ink" onClick={() => toggle(key)}>
+          <button className="rounded-md px-1 text-xs text-muted hover:bg-surface-3 hover:text-ink" onClick={() => toggle(key)}>
             {moveNumber(v.ply - 1, true)} {v.san} … ({countLeaves(v)} line{countLeaves(v) === 1 ? '' : 's'}) ▾
           </button>
         )}

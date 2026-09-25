@@ -3,17 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Board } from '../../components/Board'
 import { MoveTree } from '../../components/MoveTree'
-import { ColorDot, Section } from '../../components/ui'
+import { FirstIcon, LastIcon, NextIcon, PrevIcon } from '../../components/icons'
+import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
 import {
   addLine,
-  findOverlaps,
   MoveConflictError,
   previewRemoval,
-  previewStartChange,
   removeMoves,
   setMoveComment,
   setPositionNote,
-  setRepertoireStart,
 } from '../../db/repertoire'
 import { db } from '../../db/schema'
 import { useSettings } from '../../db/settings'
@@ -28,6 +26,7 @@ import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel } from '../board/ExplorerPanel'
 import { builderUrl } from '../../lib/routes'
+import { confirmDialog } from '../../lib/dialog'
 
 function readEngineToggle() {
   try {
@@ -150,10 +149,14 @@ export function BuilderPage() {
     } catch (e) {
       if (!(e instanceof MoveConflictError)) return setStatus((e as Error).message)
       const removed = await previewRemoval(rep, e.existing.id)
-      const ok = confirm(
-        `Your repertoire plays ${e.existing.san} here. Replace it with ${e.wantedSan}?\n` +
-          `This removes ${removed.length} move${removed.length === 1 ? '' : 's'} and resets your progress on this position.`,
-      )
+      const ok = await confirmDialog({
+        title: `Replace ${e.existing.san} with ${e.wantedSan}?`,
+        message: `Your repertoire plays ${e.existing.san} here. Replacing it removes ${removed.length} move${
+          removed.length === 1 ? '' : 's'
+        } and resets your progress on this position.`,
+        confirmLabel: 'Replace',
+        danger: true,
+      })
       if (!ok) return
       const { added } = await addLine(rep, line, { replace: true })
       setStatus(`Replaced ${e.existing.san} with ${e.wantedSan}; saved ${added.length} moves.`)
@@ -183,28 +186,19 @@ export function BuilderPage() {
   const remove = async () => {
     if (!incoming) return
     const removed = await previewRemoval(rep, incoming.id)
-    if (!confirm(`Delete ${incoming.san} and the ${removed.length - 1} moves that follow only from it?`)) return
+    const rest = removed.length - 1
+    const ok = await confirmDialog({
+      title: `Delete ${incoming.san}?`,
+      message: rest
+        ? `The ${rest} move${rest === 1 ? '' : 's'} that follow only from it are deleted too, with their review history.`
+        : 'Its review history is deleted too.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     await removeMoves(rep, new Set([incoming.id]))
     goTo(path.slice(0, cursor - 1))
     setStatus(`Deleted ${removed.length} move${removed.length === 1 ? '' : 's'}.`)
-  }
-
-  const startHere = async () => {
-    const newStart = path.slice(0, cursor)
-    const removed = await previewStartChange(rep, newStart)
-    const overlaps = await findOverlaps(rep.color, newStart, rep.id)
-    const where = formatMoves(played.slice(0, cursor).map((p) => p.san))
-    const ok = confirm(
-      `Start "${rep.name}" after ${where}?\n` +
-        (overlaps.length ? `Note: this overlaps with ${overlaps.map((r) => `"${r.name}"`).join(', ')}.\n` : '') +
-        (removed.length
-          ? `This deletes ${removed.length} move${removed.length === 1 ? '' : 's'} before that position or outside it, with their review history.`
-          : 'No moves are deleted.'),
-    )
-    if (!ok) return
-    await setRepertoireStart(rep, newStart)
-    goTo(path, [])
-    setStatus(`The repertoire now starts after ${where}.`)
   }
 
   // Same position reached through a different move order in the repertoire.
@@ -220,18 +214,22 @@ export function BuilderPage() {
   const openingHere = explorerState.data?.opening?.name
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-sm">
-          <ColorDot color={rep.color} />
-          <Link to={`/rep/${rep.id}`} className="font-medium hover:underline">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2.5">
+          <ColorDot color={rep.color} size={14} />
+          <Link to={`/rep/${rep.id}`} className="truncate font-display text-xl font-medium tracking-tight hover:text-maple">
             {rep.name}
           </Link>
-          <Link to={`/rep/${rep.id}/tree`} className="text-xs text-muted hover:text-ink">
+          <Link to={`/rep/${rep.id}/tree`} className="chip shrink-0 py-0.5">
             Overview
           </Link>
-          <span className="ml-auto truncate text-xs text-muted" title={openingHere}>
-            {openingHere ?? (myTurn ? 'Your move' : 'Opponent to move')}
+          <span
+            className={`ml-auto flex shrink-0 items-center gap-1.5 text-xs ${myTurn ? 'text-maple' : 'text-muted'}`}
+            title={openingHere}
+          >
+            <span className={`h-2 w-2 rounded-full ${myTurn ? 'bg-maple' : 'bg-faint'}`} />
+            {myTurn ? 'Your move' : 'Their move'}
           </span>
         </div>
         <Board
@@ -241,42 +239,37 @@ export function BuilderPage() {
           arrows={arrows.filter((a) => a.from)}
           onMove={play}
         />
-        <div className="flex gap-2">
-          <button
-            className="btn-ghost flex-1"
-            onClick={() => setCursor(floor)}
-            disabled={cursor <= floor}
-            aria-label="Start"
-          >
-            ⏮
+        <div className="grid grid-cols-4 gap-2" title="Keyboard: ← →">
+          <button className="btn-ghost" onClick={() => setCursor(floor)} disabled={cursor <= floor} aria-label="Start">
+            <FirstIcon />
+          </button>
+          <button className="btn-ghost" onClick={() => setCursor(cursor - 1)} disabled={cursor <= floor} aria-label="Back">
+            <PrevIcon />
+          </button>
+          <button className="btn-ghost" onClick={forward} aria-label="Forward">
+            <NextIcon />
           </button>
           <button
-            className="btn-ghost flex-1"
-            onClick={() => setCursor(cursor - 1)}
-            disabled={cursor <= floor}
-            aria-label="Back"
-          >
-            ◀
-          </button>
-          <button className="btn-ghost flex-1" onClick={forward} aria-label="Forward">
-            ▶
-          </button>
-          <button
-            className="btn-ghost flex-1"
+            className="btn-ghost"
             onClick={() => setCursor(played.length)}
             disabled={cursor >= played.length}
             aria-label="End"
           >
-            ⏭
+            <LastIcon />
           </button>
         </div>
 
         {(unsaved || incoming || status) && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            className={`flex animate-pop flex-wrap items-center gap-2 ${
+              unsaved ? 'rounded-xl border border-warn/40 bg-warn/8 p-2 pl-3' : ''
+            }`}
+          >
             {unsaved && (
               <>
+                <span className="mr-auto text-sm text-warn">Unsaved moves</span>
                 <button className="btn-primary" onClick={save} title="Keyboard: S">
-                  Save new moves
+                  Save <kbd className="rounded bg-black/10 px-1 text-[10px] font-semibold">S</kbd>
                 </button>
                 <button className="btn-ghost" onClick={() => goTo(path.slice(0, firstDraft))}>
                   Discard
@@ -284,38 +277,29 @@ export function BuilderPage() {
               </>
             )}
             {incoming && !unsaved && (
-              <>
-                <button className="btn-ghost" onClick={remove}>
-                  Delete {incoming.san}…
-                </button>
-                <button
-                  className="btn-ghost"
-                  onClick={startHere}
-                  title="Make this position the start of the repertoire: earlier moves are set up, not drilled, and scores are measured from here"
-                >
-                  Start repertoire here…
-                </button>
-              </>
+              <button className="btn-ghost text-xs" onClick={remove}>
+                Delete {incoming.san}…
+              </button>
             )}
-            {status && <span className="text-sm text-muted">{status}</span>}
+            {status && <span className="text-sm text-accent">{status}</span>}
           </div>
         )}
 
         <section className="card">
-          <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs">
+          <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
             {focus.length ? (
               <>
-                <span className="text-muted">Focus</span>
+                <span className="eyebrow">Focus</span>
                 <span className="truncate font-medium" title={focusName}>
                   {focusName ?? formatMoves(focusSans)}
                 </span>
-                <button className="ml-auto shrink-0 text-muted hover:text-ink" onClick={() => goTo(path, [])}>
+                <button className="chip ml-auto shrink-0 py-0.5" onClick={() => goTo(path, [])}>
                   Show whole repertoire
                 </button>
               </>
             ) : (
               <>
-                <span className="shrink-0 font-medium">Lines</span>
+                <span className="shrink-0 font-display text-[15px] font-medium">Lines</span>
                 {start.moves.length > 0 && (
                   <span className="truncate text-muted" title="The repertoire starts here">
                     from {formatMoves(start.sans)}
@@ -323,7 +307,7 @@ export function BuilderPage() {
                 )}
                 {cursor > start.moves.length && (
                   <button
-                    className="ml-auto shrink-0 text-muted hover:text-ink"
+                    className="chip ml-auto shrink-0 py-0.5"
                     onClick={() => goTo(path, path.slice(0, cursor))}
                     title="Show only the lines from this position"
                   >
@@ -333,7 +317,7 @@ export function BuilderPage() {
               </>
             )}
           </div>
-          <div data-tree-scroll className="px-3 py-2 md:max-h-[40vh] md:overflow-y-auto">
+          <div data-tree-scroll className="px-3 py-2.5 md:max-h-[40vh] md:overflow-y-auto">
             {tree.children.length ? (
               <MoveTree root={tree} current={path.slice(0, cursor)} onJump={(p) => goTo(p)} share={shareOf} />
             ) : (
@@ -343,15 +327,27 @@ export function BuilderPage() {
         </section>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <Section title={myTurn ? 'Your move' : 'Opponent replies'}>
+      <div className="flex flex-col gap-5">
+        <Section
+          title={myTurn ? 'Your move' : 'Opponent replies'}
+          right={
+            openingHere && (
+              <span className="block max-w-[14rem] truncate text-xs text-muted italic" title={openingHere}>
+                {openingHere}
+              </span>
+            )
+          }
+        >
           <div className="mb-3 text-sm">
             {myTurn ? (
               mine ? (
                 <>
-                  Repertoire move: <span className="font-semibold text-accent">{mine.san}</span>
+                  <span className="text-muted">Your repertoire plays</span>{' '}
+                  <span className="rounded-md bg-accent/15 px-1.5 py-0.5 font-semibold text-accent">{mine.san}</span>
                   {loss !== null && loss > settings.blunderThreshold && (
-                    <span className="ml-2 text-warn">⚠ engine: loses ~{(loss / 100).toFixed(1)} pawns vs best</span>
+                    <div className="mt-2">
+                      <Notice tone="warn">The engine says this loses about {(loss / 100).toFixed(1)} pawns compared with its best move.</Notice>
+                    </div>
                   )}
                 </>
               ) : (
@@ -364,13 +360,15 @@ export function BuilderPage() {
             )}
           </div>
           {isTransposition && (
-            <p className="mb-3 rounded-md bg-info/10 px-2 py-1.5 text-xs">
-              Transposition: this position is already in your repertoire via{' '}
-              <Link className="underline" to={builderUrl(rep.id, canonical)}>
-                {formatMoves(replay(canonical).map((m) => m.san))}
-              </Link>
-              . Lines stop here and continue from there.
-            </p>
+            <div className="mb-3">
+              <Notice tone="info">
+                Transposition: this position is already in your repertoire via{' '}
+                <Link className="font-medium underline underline-offset-2" to={builderUrl(rep.id, canonical)}>
+                  {formatMoves(replay(canonical).map((m) => m.san))}
+                </Link>
+                . Lines stop here and continue from there.
+              </Notice>
+            </div>
           )}
           <ExplorerPanel
             state={explorerState}
@@ -384,24 +382,25 @@ export function BuilderPage() {
         <Section
           title="Engine"
           right={
-            <label className="flex items-center gap-1.5 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={engineOn}
-                onChange={(e) => {
-                  setEngineOn(e.target.checked)
-                  try {
-                    localStorage.setItem('engine', e.target.checked ? 'on' : 'off')
-                  } catch {
-                    // Preference is optional.
-                  }
-                }}
-              />
-              On
-            </label>
+            <Toggle
+              label={engineOn ? 'On' : 'Off'}
+              checked={engineOn}
+              onChange={(on) => {
+                setEngineOn(on)
+                try {
+                  localStorage.setItem('engine', on ? 'on' : 'off')
+                } catch {
+                  // Preference is optional.
+                }
+              }}
+            />
           }
         >
-          {engineOn ? <EnginePanel evaluation={evaluation} onPick={play} /> : <p className="text-sm text-muted">Off</p>}
+          {engineOn ? (
+            <EnginePanel evaluation={evaluation} onPick={play} />
+          ) : (
+            <p className="text-sm text-muted">Stockfish is off. Turn it on to check your moves.</p>
+          )}
         </Section>
 
         <Notes positionKey={key} incomingId={incoming?.id} incomingSan={incoming?.san} />
@@ -421,11 +420,11 @@ function Notes({ positionKey, incomingId, incomingSan }: { positionKey: string; 
   const move = useLiveQuery(() => (incomingId ? db.moves.get(incomingId).then((m) => m ?? null) : null), [incomingId])
   return (
     <Section title="Ideas & notes">
-      <label className="mb-1 block text-xs text-muted">Plans and ideas in this position (shared by all repertoires)</label>
+      <label className="mb-1.5 block text-xs text-muted">Plans and ideas in this position (shared by all repertoires)</label>
       {note !== undefined && (
         <textarea
           key={`p-${positionKey}`}
-          className="input mb-3 h-20 w-full"
+          className="input mb-3 h-20 w-full resize-y leading-relaxed"
           defaultValue={note?.note ?? ''}
           placeholder="e.g. Aim for c4–c5 and a queenside pawn storm; the light-squared bishop belongs on d3."
           onBlur={(e) => e.target.value !== (note?.note ?? '') && setPositionNote(positionKey, e.target.value)}
@@ -433,10 +432,12 @@ function Notes({ positionKey, incomingId, incomingSan }: { positionKey: string; 
       )}
       {incomingId && move !== undefined && (
         <>
-          <label className="mb-1 block text-xs text-muted">Why {incomingSan}? (shown after you play it in training)</label>
+          <label className="mb-1.5 block text-xs text-muted">
+            Why <span className="font-semibold text-ink">{incomingSan}</span>? Shown after you play it in training.
+          </label>
           <textarea
             key={`m-${incomingId}`}
-            className="input h-16 w-full"
+            className="input h-16 w-full resize-y leading-relaxed"
             defaultValue={move?.comment ?? ''}
             onBlur={(e) => e.target.value !== (move?.comment ?? '') && setMoveComment(incomingId, e.target.value)}
           />

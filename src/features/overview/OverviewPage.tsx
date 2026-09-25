@@ -1,11 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { ColorDot } from '../../components/ui'
+import { TargetIcon } from '../../components/icons'
+import { ColorDot, Notice } from '../../components/ui'
+import { findOverlaps, previewStartChange, setRepertoireStart } from '../../db/repertoire'
+import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { useSettings } from '../../db/settings'
 import { useRepertoire } from '../../db/useRepertoire'
 import { formatMoves, turnOf } from '../../lib/chess/position'
-import { repStart } from '../../lib/chess/start'
+import { parseMoves, repStart } from '../../lib/chess/start'
 import { allKeys, buildTree, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { AuthRequiredError, moveShare, useCachedExplorer, type ExplorerData } from '../../lib/explorer'
 import { preparedness } from '../../lib/prep/preparedness'
@@ -86,9 +89,54 @@ export function OverviewPage() {
   }, [data])
 
   const [toggled, setToggled] = useState<Set<string>>(new Set())
+  const [startMsg, setStartMsg] = useState<string>()
 
   if (!data || !settings || !tree) return data === null ? <p className="text-muted">Repertoire not found.</p> : null
   const { rep, graph } = data
+
+  /** Asks for new starting moves, shows what that deletes, then moves the start. */
+  const changeStart = async () => {
+    let text = formatMoves(repStart(rep).sans)
+    let error: string | undefined
+    for (;;) {
+      const input = await promptDialog({
+        title: 'Change the starting position',
+        message: error ?? [
+          'These moves are set up, not drilled, and scores are measured from the position after them.',
+          'Leave empty to start from the initial position.',
+        ],
+        defaultValue: text,
+        placeholder: '1.e4 e5 2.Nc3',
+        confirmLabel: 'Continue',
+      })
+      if (input === null) return
+      text = input
+      try {
+        const moves = parseMoves(input)
+        if (moves.join(',') === repStart(rep).moves.join(',')) return
+        const removed = await previewStartChange(rep, moves)
+        const overlaps = await findOverlaps(rep.color, moves, rep.id)
+        const where = moves.length ? `after ${formatMoves(repStart({ ...rep, startMoves: moves }).sans)}` : 'from the initial position'
+        const ok = await confirmDialog({
+          title: `Start “${rep.name}” ${where}?`,
+          message: [
+            ...(overlaps.length ? [`This overlaps with ${overlaps.map((r) => `“${r.name}”`).join(', ')}.`] : []),
+            removed.length
+              ? `This deletes ${removed.length} move${removed.length === 1 ? '' : 's'} before that position or outside it, with their review history.`
+              : 'No moves are deleted.',
+          ],
+          confirmLabel: 'Change start',
+          danger: removed.length > 0,
+        })
+        if (!ok) return
+        await setRepertoireStart(rep, moves)
+        setStartMsg(`The repertoire now starts ${where}.`)
+        return
+      } catch (e) {
+        error = (e as Error).message
+      }
+    }
+  }
 
   /** Moves from the repertoire's start to a node. */
   const fromStart = (node: TreeNode) => node.path.slice(tree.path.length)
@@ -142,14 +190,14 @@ export function OverviewPage() {
     return (
       <li key={path.join(',')}>
         <div
-          className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] items-center gap-2 py-1 pr-1 text-bad"
+          className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] items-center gap-2 rounded-md py-1 pr-1 text-bad hover:bg-bad/8"
           style={{ paddingLeft: `${level * 1.1 + 1.25}rem` }}
         >
           <Link to={builderUrl(rep.id, path)} className="truncate text-sm hover:underline">
             {formatMoves([u.san], u.parent.ply)} · no answer prepared
           </Link>
-          <span className="text-right text-xs">{ur === undefined ? '–' : pct(ur * u.share, 1)}</span>
-          <span className="text-right text-xs">0%</span>
+          <span className="text-right text-xs tabular-nums">{ur === undefined ? '–' : pct(ur * u.share, 1)}</span>
+          <span className="text-right text-xs font-semibold tabular-nums">0%</span>
           <span />
         </div>
       </li>
@@ -169,7 +217,7 @@ export function OverviewPage() {
     return (
       <li key={rowId}>
         <div
-          className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] items-start gap-2 rounded-md py-1 pr-1 hover:bg-surface-2"
+          className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] items-start gap-2 rounded-md py-1.5 pr-1 transition-colors hover:bg-surface-2"
           style={{ paddingLeft: `${level * 1.1 + 0.25}rem` }}
         >
           <div className="flex min-w-0 items-start gap-1">
@@ -188,7 +236,7 @@ export function OverviewPage() {
               {open ? '▾' : '▸'}
             </button>
             <div className="min-w-0">
-              <Link to={builderUrl(rep.id, row.last.path)} className="text-sm break-words hover:underline">
+              <Link to={builderUrl(rep.id, row.last.path)} className="font-display text-[15px] break-words hover:text-maple">
                 {formatMoves(
                   row.nodes.map((n) => n.san),
                   row.first.ply - 1,
@@ -205,21 +253,21 @@ export function OverviewPage() {
                       ends {own}/{depth} deep
                     </span>
                   )}
-                  {name && <span className="truncate text-muted">{name}</span>}
+                  {name && <span className="truncate text-muted italic">{name}</span>}
                 </div>
               )}
             </div>
           </div>
-          <span className="text-right text-xs text-muted">{r === undefined ? '–' : pct(r, r < 0.1 ? 1 : 0)}</span>
-          <span className={`text-right text-xs font-medium ${p === undefined ? 'text-muted' : scoreColor(p)}`}>
+          <span className="text-right text-xs text-muted tabular-nums">{r === undefined ? '–' : pct(r, r < 0.1 ? 1 : 0)}</span>
+          <span className={`text-right text-xs font-semibold tabular-nums ${p === undefined ? 'text-muted' : scoreColor(p)}`}>
             {p === undefined ? '–' : pct(p)}
           </span>
           <Link
             to={`${builderUrl(rep.id, row.first.path)}&f=${row.first.path.join(',')}`}
-            className="text-center text-xs text-muted hover:text-ink"
+            className="grid place-items-center pt-0.5 text-faint hover:text-brass"
             title="Work on this line in the builder (focused)"
           >
-            ⌖
+            <TargetIcon size={15} />
           </Link>
         </div>
         {open && (
@@ -233,23 +281,30 @@ export function OverviewPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="stagger flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <ColorDot color={rep.color} />
-        <h1 className="text-xl font-semibold">
-          <Link to={`/rep/${rep.id}`} className="hover:underline">
+        <ColorDot color={rep.color} size={16} />
+        <h1 className="page-title">
+          <Link to={`/rep/${rep.id}`} className="hover:text-maple">
             {rep.name}
           </Link>{' '}
-          <span className="text-muted">· overview</span>
+          <span className="text-muted italic">overview</span>
         </h1>
         {prep && (
-          <span className={`text-sm ${scoreColor(prep.result.score)}`}>
+          <span className={`text-sm font-medium ${scoreColor(prep.result.score)}`}>
             {pct(prep.result.score)} prepared, {depth} moves deep
           </span>
         )}
         {start && start.moves.length > 0 && (
-          <span className="text-sm text-muted">from {formatMoves(start.sans)}</span>
+          <span className="rounded-md bg-surface-2 px-2 py-0.5 font-display text-sm text-muted">{formatMoves(start.sans)}</span>
         )}
+        <button
+          className="text-xs text-muted underline decoration-line-strong underline-offset-2 hover:text-ink"
+          onClick={changeStart}
+          title="The position this repertoire is drilled and scored from"
+        >
+          Change start…
+        </button>
         <div className="ml-auto flex gap-2">
           <button className="btn-ghost" onClick={() => setToggled(new Set())}>
             Reset folding
@@ -260,16 +315,18 @@ export function OverviewPage() {
         </div>
       </div>
 
+      {startMsg && <p className="text-sm text-accent">{startMsg}</p>}
+
       {prep && prep.pending > 0 && (
-        <p className="text-xs text-warn">
+        <Notice>
           {prep.fetchError instanceof AuthRequiredError
             ? 'Log in with Lichess (Settings) to see how often each line is played.'
             : `Downloading opponent statistics… ${prep.pending} positions left.`}
-        </p>
+        </Notice>
       )}
 
-      <section className="card p-2">
-        <div className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] gap-2 px-1 pb-1 text-[11px] text-muted">
+      <section className="card p-3">
+        <div className="mb-1 grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] gap-2 border-b border-line/70 px-1 pb-2 text-[11px] tracking-wide text-faint uppercase">
           <span className="pl-5">Line</span>
           <span className="text-right" title="Share of games from the starting position that reach this line">
             Games
@@ -288,10 +345,10 @@ export function OverviewPage() {
           <p className="p-2 text-sm text-muted">This repertoire is empty. Add lines in the builder.</p>
         )}
       </section>
-      <p className="text-xs text-muted">
+      <p className="text-xs leading-relaxed text-faint">
         Games = share of games from the repertoire's starting position (with your explorer filter) that reach the line.
-        Prep = chance to stay in moves you remember until you are {depth} moves deep. ⌖ opens the line in the builder,
-        focused on that branch.
+        Prep = chance to stay in moves you remember until you are {depth} moves deep.{' '}
+        <TargetIcon size={12} className="inline align-[-2px]" /> opens the line in the builder, focused on that branch.
       </p>
     </div>
   )

@@ -2,7 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { ColorDot, Section } from '../../components/ui'
+import { ArrowRight, BoltIcon } from '../../components/icons'
+import { ColorDot, Notice, Section, Stat } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
 import { db, type Game, type Repertoire } from '../../db/schema'
 import { setPlanChoice, useSettings, type Settings } from '../../db/settings'
@@ -15,16 +16,17 @@ import { planScore, scoreFor, type DecisionNode, type PlanNode, type RepliesNode
 import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl, planUrl } from '../../lib/routes'
+import { confirmOverlap } from '../../lib/dialog'
 import { isDue } from '../../lib/srs/scheduler'
 
 const EMPTY = new Set<string>()
 const COLOR_NAME: Record<Color, string> = { white: 'White', black: 'Black' }
 
 const STYLE_CLS: Record<Style, string> = {
-  solid: 'bg-info/15 text-info',
-  active: 'bg-accent/15 text-accent',
-  sharp: 'bg-bad/15 text-bad',
-  gambit: 'bg-warn/15 text-warn',
+  solid: 'border-info/40 text-info',
+  active: 'border-accent/40 text-accent',
+  sharp: 'border-bad/40 text-bad',
+  gambit: 'border-warn/40 text-warn',
 }
 const THEORY_LABEL: Record<Theory, string> = { light: 'little theory', medium: 'some theory', heavy: 'lots of theory' }
 
@@ -102,10 +104,7 @@ export function PlanPage() {
       const overlaps = await findOverlaps(color, startUci)
       if (
         overlaps.length &&
-        !confirm(
-          `This overlaps with ${overlaps.map((r) => `"${r.name}"`).join(', ')}: the same positions would be in two ` +
-            'repertoires and be drilled twice. Create it anyway?',
-        )
+        !(await confirmOverlap(overlaps.map((r) => r.name)))
       )
         return
       const rep = await createRepertoire(name, color, undefined, startUci)
@@ -115,16 +114,22 @@ export function PlanPage() {
   const next = plan.decisions[0]
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="stagger flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <ColorDot color={color} />
-        <h1 className="text-xl font-semibold">{COLOR_NAME[color]} repertoire</h1>
-        <div className="ml-auto flex gap-1">
+        <div>
+          <div className="eyebrow">Repertoire plan</div>
+          <h1 className="page-title mt-1 flex items-center gap-3">
+            <ColorDot color={color} size={16} /> {COLOR_NAME[color]}
+          </h1>
+        </div>
+        <div className="ml-auto flex rounded-full border border-line bg-surface p-1">
           {(['white', 'black'] as const).map((c) => (
             <Link
               key={c}
               to={planUrl(c)}
-              className={`btn border px-3 py-1 ${c === color ? 'border-accent bg-surface-2' : 'border-line text-muted'}`}
+              className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+                c === color ? 'bg-surface-3 text-ink shadow-[inset_0_0_0_1px_rgb(217_170_85/0.45)]' : 'text-muted hover:text-ink'
+              }`}
             >
               <ColorDot color={c} /> {COLOR_NAME[c]}
             </Link>
@@ -134,7 +139,7 @@ export function PlanPage() {
 
       {!plan.empty && (
         <Section title="Where you stand">
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid grid-cols-3 gap-3">
             <Stat value={plan.coverage === null ? '–' : pct(plan.coverage)} label="of games reach one of your repertoires" />
             <Stat
               value={score === null ? '–' : pct(score)}
@@ -146,17 +151,18 @@ export function PlanPage() {
           {next ? (
             <Link
               to={planUrl(color, next.path)}
-              className="mt-3 flex items-center gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm hover:bg-warn/20"
+              className="group mt-4 flex items-center gap-3 rounded-lg border border-warn/30 bg-warn/8 px-3 py-2.5 text-sm transition hover:border-warn/60 hover:bg-warn/12"
             >
-              <span className="font-medium">Next step:</span>
+              <BoltIcon size={16} className="shrink-0 text-warn" />
               <span className="min-w-0 flex-1 truncate">
-                {next.title}
+                <span className="font-medium text-warn">Next step</span> {next.title}
                 {next.sans.length > 0 && <span className="text-muted"> · after {formatMoves(next.sans)}</span>}
               </span>
-              {next.reach !== null && <span className="shrink-0 text-xs text-muted">{fmtReach(next.reach)} of games</span>}
+              {next.reach !== null && <span className="shrink-0 text-xs text-muted tabular-nums">{fmtReach(next.reach)} of games</span>}
+              <ArrowRight size={15} className="shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-warn" />
             </Link>
           ) : (
-            <p className="mt-3 text-sm text-accent">
+            <p className="mt-4 text-sm text-accent">
               Every frequent line leads to one of your repertoires. Now build them up and train them.
             </p>
           )}
@@ -164,16 +170,16 @@ export function PlanPage() {
       )}
 
       {state.pending > 0 && (
-        <p className="text-xs text-warn">
+        <Notice>
           {state.fetchError instanceof AuthRequiredError
             ? 'Log in with Lichess (Settings) to see how often opponents play each move.'
             : `Downloading opponent statistics… ${state.pending} positions left.`}
-        </p>
+        </Notice>
       )}
 
-      <section className="card p-2">
+      <section className="card p-3">
         {plan.empty && (
-          <p className="px-1 pb-2 text-sm text-muted">
+          <p className="px-1 pb-3 text-sm leading-relaxed text-muted">
             {color === 'white'
               ? 'Start with your first move. The plan then asks for an answer to each of Black’s main replies, and every answer becomes a repertoire you build and train.'
               : 'Choose a defence against each of White’s main first moves. The plan then asks for an answer to White’s main tries, and every answer becomes a repertoire you build and train.'}
@@ -190,7 +196,7 @@ export function PlanPage() {
           <ul className="flex flex-col gap-1">
             {plan.offPlan.map((r) => (
               <li key={r.id}>
-                <Link to={`/rep/${r.id}`} className="text-sm hover:underline">
+                <Link to={`/rep/${r.id}`} className="font-display hover:text-maple">
                   {r.name}
                 </Link>
               </li>
@@ -199,19 +205,10 @@ export function PlanPage() {
         </Section>
       )}
 
-      <p className="text-xs text-muted">
+      <p className="text-xs leading-relaxed text-faint">
         Shares come from the Lichess opening explorer with your filter (Settings). Replies played in fewer than 3% of
         games are grouped under "other replies"; your repertoires cover them too once you add them in the builder.
       </p>
-    </div>
-  )
-}
-
-function Stat({ value, label, cls = '' }: { value: string; label: string; cls?: string }) {
-  return (
-    <div className="rounded-md bg-surface-2 p-2">
-      <div className={`text-2xl font-semibold ${cls}`}>{value}</div>
-      <div className="text-[11px] leading-tight text-muted">{label}</div>
     </div>
   )
 }
@@ -262,20 +259,24 @@ function ChainRow({
   return (
     <li id={`plan-${id}`}>
       <div
-        className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm ${node.counted ? '' : 'opacity-60'}`}
+        className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm transition-colors hover:bg-surface-2/50 ${node.counted ? '' : 'opacity-60'}`}
         style={indent(level)}
       >
         {reply && (
           <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="font-medium">{formatMoves([reply.san], reply.ply)}</span>
-            {reply.name && <span className="truncate text-muted">{reply.name}</span>}
-            {reply.share !== null && <span className="text-xs text-muted">{pct(reply.share, reply.share < 0.1 ? 1 : 0)}</span>}
+            <span className="font-display text-[15px] font-medium">{formatMoves([reply.san], reply.ply)}</span>
+            {reply.name && <span className="truncate text-muted italic">{reply.name}</span>}
+            {reply.share !== null && (
+              <span className="rounded-full bg-surface-3 px-1.5 text-[11px] text-muted tabular-nums">
+                {pct(reply.share, reply.share < 0.1 ? 1 : 0)}
+              </span>
+            )}
           </span>
         )}
         {moves.map((m, i) => (
           <span key={i} className="flex items-baseline gap-1">
-            <span className="text-muted">→</span>
-            <span className="font-medium">{formatMoves([m.san], m.ply)}</span>
+            <span className="text-faint">→</span>
+            <span className="font-display text-[15px] font-medium text-maple">{formatMoves([m.san], m.ply)}</span>
             {m.source === 'choice' ? (
               <button
                 className="text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
@@ -293,10 +294,11 @@ function ChainRow({
         {end.kind === 'covered' && <CoveredBadge node={end} ctx={ctx} />}
         {end.kind === 'decision' && (
           <button
-            className="rounded bg-warn/15 px-1.5 py-0.5 text-xs font-medium text-warn hover:bg-warn/25"
+            className="flex items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2.5 py-0.5 text-xs font-medium text-warn transition hover:bg-warn/20"
             onClick={() => ctx.toggle(id)}
           >
-            {decisionOpen ? 'Choose ▾' : 'Choose your answer ▸'}
+            {decisionOpen ? 'Choose' : 'Choose your answer'}
+            <ArrowRight size={12} className={`transition ${decisionOpen ? 'rotate-90' : ''}`} />
           </button>
         )}
         {end.kind === 'stop' && <span className="text-xs text-muted">deep enough for now</span>}
@@ -394,14 +396,14 @@ function DecisionCard({ node, ctx }: { node: DecisionNode; ctx: Ctx }) {
   const name = here?.opening?.name
 
   return (
-    <div className="rounded-lg border border-warn/40 bg-bg/40 p-3">
-      <div className="mb-2 flex flex-wrap items-baseline gap-2">
-        <h3 className="font-semibold">{node.title}</h3>
+    <div className="animate-pop rounded-xl border border-warn/35 bg-bg/50 p-4 shadow-[inset_0_1px_0_rgb(255_225_180/0.04)]">
+      <div className="mb-3 flex flex-wrap items-baseline gap-2">
+        <h3 className="font-display text-lg font-medium">{node.title}</h3>
         {node.sans.length > 0 && <span className="text-xs text-muted">after {formatMoves(node.sans)}</span>}
         {node.reach !== null && <span className="ml-auto text-xs text-muted">{fmtReach(node.reach)} of games</span>}
       </div>
       {node.slot && (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
           {node.slot.options.map((o) => (
             <OptionCard key={o.name} option={o} node={node} ctx={ctx} />
           ))}
@@ -416,11 +418,11 @@ function DecisionCard({ node, ctx }: { node: DecisionNode; ctx: Ctx }) {
               return (
                 <button
                   key={m.uci}
-                  className="btn-ghost px-2 py-1 text-xs"
+                  className="chip"
                   title="Play this move and choose answers to the replies"
                   onClick={() => setPlanChoice(ctx.color, node.key, m.uci)}
                 >
-                  <span className="font-medium">{formatMoves([m.san], node.path.length)}</span>
+                  <span className="font-semibold text-ink">{formatMoves([m.san], node.path.length)}</span>
                   <span className="text-muted">
                     {pct(m.share)}
                     {s !== null && ` · scores ${pct(s)}`}
@@ -457,16 +459,16 @@ function OptionCard({ option: o, node, ctx }: { option: ResolvedOption; node: De
   const definingSan = formatMoves([startOf(o.startUci).sans.at(-1)!], o.startUci.length - 1)
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-md bg-surface-2 p-2.5">
+    <div className="flex flex-col gap-2 rounded-lg border border-line/70 bg-surface-2/70 p-3.5 transition hover:border-line-strong">
       <div className="flex items-baseline gap-2">
-        <span className="font-medium">{o.name}</span>
-        <span className="ml-auto flex shrink-0 gap-1 text-[10px]">
-          <span className={`rounded px-1 ${STYLE_CLS[o.style]}`}>{o.style}</span>
-          <span className="rounded bg-line px-1 text-muted">{THEORY_LABEL[o.theory]}</span>
+        <span className="font-display text-[17px] leading-tight font-medium">{o.name}</span>
+        <span className="ml-auto flex shrink-0 gap-1 text-[10px] font-medium">
+          <span className={`rounded-full border px-1.5 ${STYLE_CLS[o.style]}`}>{o.style}</span>
+          <span className="rounded-full border border-line-strong px-1.5 text-muted">{THEORY_LABEL[o.theory]}</span>
         </span>
       </div>
-      <div className="text-xs text-muted">{formatMoves(line, node.path.length)}</div>
-      <p className="text-xs leading-snug">{o.about}</p>
+      <div className="font-display text-sm text-maple/90">{formatMoves(line, node.path.length)}</div>
+      <p className="text-xs leading-relaxed text-ink/85">{o.about}</p>
       <div className="text-[11px] text-muted">
         {share !== undefined && (
           <>
@@ -482,7 +484,7 @@ function OptionCard({ option: o, node, ctx }: { option: ResolvedOption; node: De
         )}
       </div>
       <button
-        className={`${o.kind === 'branch' ? 'btn border border-accent/60 text-accent hover:bg-accent/10' : 'btn-primary'} mt-auto px-2 py-1 text-xs`}
+        className={`${o.kind === 'branch' ? 'btn-ghost' : 'btn-primary'} mt-auto px-2.5 py-1.5 text-xs`}
         onClick={() =>
           o.kind === 'branch'
             ? setPlanChoice(ctx.color, node.key, o.uci)
@@ -508,11 +510,11 @@ function CoveredBadge({ node, ctx }: { node: Extract<PlanNode, { kind: 'covered'
   const due = data ? data.cards.filter((c) => isDue(c.fsrs, now)).length : 0
   return (
     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-      <Link to={`/rep/${node.rep.id}`} className="font-medium text-accent hover:underline">
+      <Link to={`/rep/${node.rep.id}`} className="font-display text-[15px] font-medium text-accent hover:underline">
         ✓ {node.rep.name}
       </Link>
       {data && data.moves.length === 0 ? (
-        <Link to={builderUrl(node.rep.id, [])} className="rounded bg-warn/15 px-1.5 text-xs text-warn hover:bg-warn/25">
+        <Link to={builderUrl(node.rep.id, [])} className="rounded-full border border-warn/40 px-2 text-xs text-warn hover:bg-warn/15">
           empty: build it
         </Link>
       ) : (

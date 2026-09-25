@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { ColorDot, Section } from '../../components/ui'
+import { ColorDot, Section, Stat } from '../../components/ui'
 import { deleteAllGames, gradeForgottenMoves, loadRepIndex } from '../../db/games'
 import { db, type Game, type GameSpeed } from '../../db/schema'
 import { useSettings, type Settings } from '../../db/settings'
@@ -21,6 +21,7 @@ import { importGames, type ImportProgress } from '../../lib/games/import'
 import { GAME_SPEEDS } from '../../lib/games/parse'
 import { lossKey, useMoveLosses, type LossTarget } from '../../lib/games/moveLoss'
 import { builderUrl } from '../../lib/routes'
+import { confirmDialog } from '../../lib/dialog'
 
 const DAY = 24 * 3600 * 1000
 const PERIODS = [
@@ -38,7 +39,7 @@ const OUTCOMES: { outcome: Outcome; label: string; cls: string }[] = [
   { outcome: 'opp-left', label: 'Opponent left your prep', cls: 'bg-info' },
   { outcome: 'prep-ended', label: 'Your line ended', cls: 'bg-warn' },
   { outcome: 'forgot', label: 'You forgot your move', cls: 'bg-bad' },
-  { outcome: 'not-covered', label: 'No repertoire', cls: 'bg-line' },
+  { outcome: 'not-covered', label: 'No repertoire', cls: 'bg-line-strong' },
 ]
 
 /** Games played in the last `months` months (0 = all). */
@@ -59,16 +60,20 @@ export function GamesPage() {
   }, [games, reps, period, speeds])
   // Only offer the time controls you actually have games in.
   const played = useMemo(() => GAME_SPEEDS.filter((s) => games?.some((g) => g.speed === s)), [games])
-  const chip = (active: boolean) => `btn border px-2.5 py-1 ${active ? 'border-accent bg-surface-2' : 'border-line text-muted'}`
+  const chip = (active: boolean) => `chip ${active ? 'chip-on' : ''}`
 
   if (!settings || !games || !reps) return null
   return (
-    <div className="flex flex-col gap-4">
+    <div className="stagger flex flex-col gap-5">
+      <div>
+        <div className="eyebrow">Lichess & Chess.com</div>
+        <h1 className="page-title mt-1">Your games</h1>
+      </div>
       <ImportSection settings={settings} count={games.length} newest={games[0]?.playedAt} reps={reps} />
       {games.length > 0 && analyses && (
         <>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-muted">Games from the last</span>
+            <span className="w-28 shrink-0 text-xs text-muted">Games from the last</span>
             {PERIODS.map((p) => (
               <button
                 key={p.months}
@@ -80,8 +85,8 @@ export function GamesPage() {
             ))}
           </div>
           {played.length > 1 && (
-            <div className="-mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted">Time controls</span>
+            <div className="-mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="w-28 shrink-0 text-xs text-muted">Time controls</span>
               {played.map((s) => (
                 <button
                   key={s}
@@ -153,13 +158,19 @@ function ImportSection({
 
   return (
     <Section
-      title="Your games"
+      title="Import"
       right={
         count > 0 && (
           <button
-            className="text-xs text-muted hover:text-ink"
+            className="text-xs text-muted hover:text-bad"
             onClick={async () => {
-              if (confirm('Delete all imported games from this device? Your cards keep their history.')) await deleteAllGames()
+              const ok = await confirmDialog({
+                title: 'Delete imported games?',
+                message: 'All imported games are removed from this device. Your cards keep their review history.',
+                confirmLabel: 'Delete games',
+                danger: true,
+              })
+              if (ok) await deleteAllGames()
             }}
           >
             Delete imported games
@@ -167,25 +178,29 @@ function ImportSection({
         )
       }
     >
-      <p className="mb-3 text-sm text-muted">
+      <p className="mb-4 text-sm leading-relaxed text-muted">
         Imports your bullet, blitz, rapid, classical and daily games (the first import covers the last 12 months) and compares
         them with your repertoires. A repertoire move you got wrong in a game played after its last review is sent back to review.
       </p>
-      <div className="mb-3 flex flex-col gap-1 text-sm">
-        <div>
-          Lichess:{' '}
+      <div className="mb-4 grid grid-cols-2 gap-2 text-sm">
+        <div className="rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2">
+          <div className="text-[11px] text-muted">Lichess</div>
           {lichessUser ? (
             <span className="font-medium">{lichessUser}</span>
           ) : (
-            <span className="text-muted">log in with Lichess in Settings to import these games</span>
+            <Link to="/settings" className="text-xs text-warn hover:underline">
+              Log in first
+            </Link>
           )}
         </div>
-        <div>
-          Chess.com:{' '}
-          {chesscomUser ? <span className="font-medium">{chesscomUser}</span> : <span className="text-muted">not set</span>}{' '}
-          <Link to="/settings" className="text-xs text-muted underline">
-            change
-          </Link>
+        <div className="rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2">
+          <div className="flex items-center text-[11px] text-muted">
+            Chess.com
+            <Link to="/settings" className="ml-auto hover:text-ink">
+              change
+            </Link>
+          </div>
+          {chesscomUser ? <span className="font-medium">{chesscomUser}</span> : <span className="text-xs text-faint">not set</span>}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -239,7 +254,7 @@ function Report({ analyses, reps, settings }: { analyses: GameAnalysis[]; reps: 
       {summaries.length > 0 && (
         <Section title="By repertoire">
           <table className="w-full text-sm">
-            <thead className="text-left text-xs text-muted">
+            <thead className="text-left text-[11px] tracking-wide text-faint uppercase">
               <tr>
                 <th className="font-normal">Repertoire</th>
                 <th className="text-right font-normal">Games</th>
@@ -256,9 +271,9 @@ function Report({ analyses, reps, settings }: { analyses: GameAnalysis[]; reps: 
                 .map((s) => {
                   const rep = repName.get(s.repertoireId)
                   return (
-                    <tr key={s.repertoireId} className="border-t border-line">
-                      <td className="py-1">
-                        <Link to={`/rep/${s.repertoireId}`} className="flex items-center gap-2 hover:underline">
+                    <tr key={s.repertoireId} className="border-t border-line/70">
+                      <td className="py-2">
+                        <Link to={`/rep/${s.repertoireId}`} className="flex items-center gap-2 font-display hover:text-maple">
                           {rep && <ColorDot color={rep.color} />}
                           {rep?.name}
                         </Link>
@@ -337,17 +352,11 @@ function Overview({ analyses }: { analyses: GameAnalysis[] }) {
   const avg = inRep.length ? inRep.reduce((s, a) => s + a.ownMoves, 0) / inRep.length : 0
   return (
     <Section title={`${analyses.length} games`}>
-      <div className="mb-3 flex gap-6">
-        <div>
-          <div className="text-2xl font-semibold">{pct(inRep.length / total)}</div>
-          <div className="text-xs text-muted">reached a repertoire</div>
-        </div>
-        <div>
-          <div className="text-2xl font-semibold">{avg.toFixed(1)}</div>
-          <div className="text-xs text-muted">avg. own moves in prep</div>
-        </div>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <Stat value={pct(inRep.length / total)} label="reached a repertoire" />
+        <Stat value={avg.toFixed(1)} label="of your moves in prep, on average" />
       </div>
-      <div className="flex h-3 w-full overflow-hidden rounded-sm">
+      <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
         {OUTCOMES.map((o) => {
           const n = counts.get(o.outcome) ?? 0
           return n ? <div key={o.outcome} className={o.cls} style={{ width: `${(n / total) * 100}%` }} title={o.label} /> : null
@@ -357,7 +366,7 @@ function Overview({ analyses }: { analyses: GameAnalysis[] }) {
         {OUTCOMES.map((o) => (
           <li key={o.outcome} className="flex items-center gap-1.5">
             <span className={`inline-block h-2 w-2 rounded-sm ${o.cls}`} />
-            {o.label} <span className="text-ink">{counts.get(o.outcome) ?? 0}</span>
+            {o.label} <span className="font-semibold text-ink tabular-nums">{counts.get(o.outcome) ?? 0}</span>
           </li>
         ))}
       </ul>
@@ -387,19 +396,24 @@ function FindingList({
   const [all, setAll] = useState(false)
   const shown = all ? findings : findings.slice(0, LIST_SIZE)
   return (
-    <Section title={title} right={findings.length > 0 && <span className="text-xs text-muted">{findings.length}</span>}>
-      <p className="mb-2 text-xs text-muted">{hint}</p>
+    <Section title={title} right={
+        findings.length > 0 && (
+          <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-semibold text-muted tabular-nums">{findings.length}</span>
+        )
+      }
+    >
+      <p className="mb-3 text-xs leading-relaxed text-muted">{hint}</p>
       {findings.length === 0 ? (
         <p className="text-sm text-muted">{empty}</p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-2">
           {shown.map((f) => (
             <FindingRow key={f.id} f={f} ctx={ctx} />
           ))}
         </ul>
       )}
       {findings.length > LIST_SIZE && (
-        <button className="mt-2 text-xs text-muted underline" onClick={() => setAll(!all)}>
+        <button className="chip mt-3" onClick={() => setAll(!all)}>
           {all ? 'Show fewer' : `Show all ${findings.length}`}
         </button>
       )}
@@ -456,14 +470,14 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
   let action: ReactNode = null
   if (f.outcome === 'forgot' && rep)
     action = (
-      <Link className="btn-ghost shrink-0 px-2 py-1 text-xs" to={`/train?mode=drill&rep=${rep.id}`}>
+      <Link className="btn-ghost shrink-0 px-2.5 py-1 text-xs" to={`/train?mode=drill&rep=${rep.id}`}>
         Drill
       </Link>
     )
   else if (rep)
     action = (
       <Link
-        className="btn-ghost shrink-0 px-2 py-1 text-xs"
+        className="btn-ghost shrink-0 px-2.5 py-1 text-xs"
         to={builderUrl(rep.id, mine ? f.path : [...f.path, top.uci])}
       >
         Prepare
@@ -472,7 +486,7 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
   else
     action = (
       <Link
-        className="btn-ghost shrink-0 px-2 py-1 text-xs"
+        className="btn-ghost shrink-0 px-2.5 py-1 text-xs"
         to={`/?newColor=${f.color}&newStart=${encodeURIComponent(formatMoves([...f.sans, top.san]))}`}
       >
         New repertoire
@@ -480,10 +494,10 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
     )
 
   return (
-    <li className="rounded-md bg-surface-2 px-2 py-1.5 text-sm">
+    <li className="rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2 text-sm">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-muted">{formatMoves(f.sans) || 'Starting position'}</div>
+          <div className="truncate font-display text-muted">{formatMoves(f.sans) || 'Starting position'}</div>
           <div className="text-muted">{label}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
             {rep ? (
@@ -512,7 +526,7 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
 function GameLinks({ games }: { games: Game[] }) {
   return (
     <details className="mt-1 text-xs">
-      <summary className="cursor-pointer text-muted">Games</summary>
+      <summary className="cursor-pointer text-muted hover:text-ink">Games ▾</summary>
       <ul className="mt-1 flex flex-col gap-0.5">
         {[...games]
           .sort((a, b) => b.playedAt - a.playedAt)

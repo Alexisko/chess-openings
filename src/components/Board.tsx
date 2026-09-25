@@ -19,10 +19,20 @@ interface Props {
   lastMove?: [string, string]
   arrows?: Arrow[]
   onMove?: (uci: string) => void
+  /** Glows around the board once; a new id replays it. */
+  flash?: { kind: 'correct' | 'wrong'; id: number }
+}
+
+// Arrow colours that read on maple and walnut.
+const BRUSHES = {
+  green: { key: 'g', color: '#2a7412', opacity: 0.95, lineWidth: 10 },
+  red: { key: 'r', color: '#b0220f', opacity: 0.95, lineWidth: 10 },
+  blue: { key: 'b', color: '#1f4f86', opacity: 0.85, lineWidth: 10 },
+  yellow: { key: 'y', color: '#c98a12', opacity: 0.9, lineWidth: 10 },
 }
 
 /** Chessground board. Promotions are always to a queen. */
-export function Board({ fen, orientation, movable = 'both', lastMove, arrows, onMove }: Props) {
+export function Board({ fen, orientation, movable = 'both', lastMove, arrows, onMove, flash }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const api = useRef<Api | null>(null)
   const onMoveRef = useRef(onMove)
@@ -37,7 +47,7 @@ export function Board({ fen, orientation, movable = 'both', lastMove, arrows, on
       draggable: { showGhost: true },
       premovable: { enabled: false },
       highlight: { lastMove: true, check: true },
-      drawable: { enabled: true },
+      drawable: { enabled: true, brushes: BRUSHES },
     })
     return () => api.current?.destroy()
   }, [])
@@ -77,8 +87,11 @@ export function Board({ fen, orientation, movable = 'both', lastMove, arrows, on
   }, [arrows])
 
   return (
-    <div className="board-wrap aspect-square w-full select-none">
-      <div ref={el} className="h-full w-full" />
+    <div className="board-frame">
+      <div className="board-wrap aspect-square w-full select-none">
+        <div ref={el} className="h-full w-full" />
+      </div>
+      {flash && <div key={flash.id} className="board-flash" data-kind={flash.kind} />}
     </div>
   )
 }

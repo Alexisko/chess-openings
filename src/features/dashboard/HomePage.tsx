@@ -2,7 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { ColorDot, Section } from '../../components/ui'
+import { ArrowRight, BoltIcon, ChevronDown, BookIcon, TargetIcon, TrainIcon } from '../../components/icons'
+import { ColorDot, ScoreRing, Section } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
 import { learnedToday } from '../../db/reviews'
 import { db, type Repertoire } from '../../db/schema'
@@ -15,6 +16,7 @@ import { planScore } from '../../lib/plan/plan'
 import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl, planUrl } from '../../lib/routes'
+import { confirmOverlap } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 
 export function HomePage() {
@@ -31,56 +33,80 @@ export function HomePage() {
   }, [])
   const newLeft = counts && settings ? Math.max(0, Math.min(counts.fresh, settings.newPerDay - counts.learnedToday)) : 0
 
+  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+  const headline = !counts
+    ? '\u00a0'
+    : counts.due
+      ? `${counts.due} move${counts.due === 1 ? '' : 's'} to review`
+      : newLeft
+        ? 'All caught up — time to learn'
+        : 'All caught up for today'
+
   return (
-    // On phones: Today, Repertoires, New. On wider screens the repertoire list gets its own column.
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] md:items-start">
-      <div className="flex flex-col gap-4">
-        {settings && !settings.lichessToken && (
-          <div className="card border-warn/50 p-3 text-sm">
-            <p className="mb-2">
-              Log in with Lichess to see what opponents play (the opening explorer requires it). No permissions are
-              requested: the token only identifies you.
-            </p>
-            <button className="btn-primary" onClick={() => startLogin()}>
-              Log in with Lichess
-            </button>
-          </div>
-        )}
+    <div className="stagger flex flex-col gap-5">
+      <header>
+        <div className="eyebrow">{today}</div>
+        <h1 className="page-title mt-1">{headline}</h1>
+      </header>
 
-        <Section title="Today">
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div className="rounded-md bg-surface-2 p-3">
-              <div className="text-2xl font-semibold">{counts?.due ?? '–'}</div>
-              <div className="text-xs text-muted">reviews due</div>
+      {/* On phones: Today, Repertoires, New. On wider screens the repertoire list gets its own column. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] md:grid-rows-[auto_1fr] md:items-start">
+        <div className="flex flex-col gap-5">
+          {settings && !settings.lichessToken && (
+            <div className="card border-warn/40 p-4 text-sm">
+              <p className="mb-3 leading-relaxed text-muted">
+                <span className="font-medium text-ink">Connect Lichess</span> to see what opponents play: the opening
+                explorer requires it. No permissions are requested; the token only identifies you.
+              </p>
+              <button className="btn-primary" onClick={() => startLogin()}>
+                Log in with Lichess
+              </button>
             </div>
-            <div className="rounded-md bg-surface-2 p-3">
-              <div className="text-2xl font-semibold">{newLeft}</div>
-              <div className="text-xs text-muted">new moves to learn</div>
+          )}
+
+          <section className="card overflow-hidden">
+            <div className="grid grid-cols-2 divide-x divide-line/70 border-b border-line/70">
+              <TodayStat value={counts?.due} label="reviews due" tone={counts?.due ? 'text-maple' : 'text-faint'} />
+              <TodayStat value={counts ? newLeft : undefined} label="new moves to learn" tone={newLeft ? 'text-ink' : 'text-faint'} />
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link to="/train?mode=review" className={`btn-primary flex-1 ${counts?.due ? '' : 'pointer-events-none opacity-40'}`}>
-              Review
-            </Link>
-            <Link to="/train?mode=learn" className={`btn-ghost flex-1 ${newLeft ? '' : 'pointer-events-none opacity-40'}`}>
-              Learn new
-            </Link>
-            <Link to="/train?mode=drill" className="btn-ghost flex-1">
-              Drill weak spots
-            </Link>
-          </div>
-        </Section>
-      </div>
+            <div className="flex flex-col gap-2 p-4">
+              <Link
+                to="/train?mode=review"
+                className={`btn-primary w-full py-2.5 ${counts?.due ? '' : 'pointer-events-none opacity-40'}`}
+              >
+                <TrainIcon size={17} /> Review
+              </Link>
+              <div className="grid grid-cols-2 gap-2">
+                <Link to="/train?mode=learn" className={`btn-ghost ${newLeft ? '' : 'pointer-events-none opacity-40'}`}>
+                  <BookIcon size={16} /> Learn new
+                </Link>
+                <Link to="/train?mode=drill" className="btn-ghost">
+                  <TargetIcon size={16} /> Drill weak spots
+                </Link>
+              </div>
+            </div>
+          </section>
+        </div>
 
-      <div className="flex flex-col gap-4 md:row-span-2">
-        {reps !== undefined &&
-          settings &&
-          (['white', 'black'] as const).map((c) => (
-            <ColorSection key={c} color={c} reps={reps.filter((r) => r.color === c)} settings={settings} />
-          ))}
-      </div>
+        <div className="flex flex-col gap-5 md:col-start-2 md:row-span-2 md:row-start-1">
+          {reps !== undefined &&
+            settings &&
+            (['white', 'black'] as const).map((c) => (
+              <ColorSection key={c} color={c} reps={reps.filter((r) => r.color === c)} settings={settings} />
+            ))}
+        </div>
 
-      <NewRepertoire />
+        <NewRepertoire />
+      </div>
+    </div>
+  )
+}
+
+function TodayStat({ value, label, tone }: { value: number | undefined; label: string; tone: string }) {
+  return (
+    <div className="px-4 py-5 text-center">
+      <div className={`font-display text-5xl leading-none font-medium tabular-nums ${tone}`}>{value ?? '–'}</div>
+      <div className="mt-2 text-xs text-muted">{label}</div>
     </div>
   )
 }
@@ -97,33 +123,34 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
   return (
     <Section
       title={
-        <span className="flex items-center gap-2">
-          <ColorDot color={color} /> {COLOR_NAME[color]}
+        <span className="flex items-center gap-2.5">
+          <ColorDot color={color} size={14} /> {COLOR_NAME[color]}
         </span>
       }
       right={
-        <Link to={planUrl(color)} className="text-xs text-muted hover:text-ink">
-          Open plan →
+        <Link to={planUrl(color)} className="flex items-center gap-1 text-xs font-medium text-muted hover:text-brass">
+          Plan <ArrowRight size={13} />
         </Link>
       }
     >
       {plan?.empty ? (
-        <Link to={planUrl(color)} className="btn-primary w-full">
+        <Link to={planUrl(color)} className="btn-primary w-full py-2.5">
           {color === 'white' ? 'Choose your first move as White' : 'Choose your defences as Black'}
+          <ArrowRight size={16} />
         </Link>
       ) : (
         plan && (
           <>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
               {plan.coverage !== null && (
                 <span>
-                  <span className="font-semibold">{pct(plan.coverage)}</span>{' '}
+                  <span className="font-display text-lg font-medium tabular-nums">{pct(plan.coverage)}</span>{' '}
                   <span className="text-muted">of games covered</span>
                 </span>
               )}
               {score !== null && (
                 <span>
-                  <span className={`font-semibold ${scoreColor(score)}`}>{pct(score)}</span>{' '}
+                  <span className={`font-display text-lg font-medium tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>{' '}
                   <span className="text-muted">prepared, {settings.prepDepth} moves deep</span>
                 </span>
               )}
@@ -131,20 +158,22 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
             {next && (
               <Link
                 to={planUrl(color, next.path)}
-                className="mt-2 flex items-center gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm hover:bg-warn/20"
+                className="group mt-3 flex items-center gap-3 rounded-lg border border-warn/30 bg-warn/8 px-3 py-2.5 text-sm transition hover:border-warn/60 hover:bg-warn/12"
               >
+                <BoltIcon size={16} className="shrink-0 text-warn" />
                 <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium">Next:</span> {next.title}
+                  <span className="font-medium text-warn">Next</span> {next.title}
                   {next.sans.length > 0 && <span className="text-muted"> · {formatMoves(next.sans)}</span>}
                 </span>
-                {next.reach !== null && <span className="shrink-0 text-xs text-muted">{pct(next.reach, 1)}</span>}
+                {next.reach !== null && <span className="shrink-0 text-xs text-muted tabular-nums">{pct(next.reach, 1)}</span>}
+                <ArrowRight size={15} className="shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-warn" />
               </Link>
             )}
           </>
         )
       )}
       {reps.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2">
+        <ul className="mt-4 flex flex-col gap-2">
           {reps.map((r) => (
             <RepertoireRow key={r.id} rep={r} settings={settings} onScore={report} />
           ))}
@@ -173,20 +202,20 @@ function RepertoireRow({
   const due = data ? data.cards.filter((c) => isDue(c.fsrs, now)).length : 0
   return (
     <li>
-      <Link to={`/rep/${rep.id}`} className="flex items-center gap-3 rounded-md bg-surface-2 px-3 py-2 hover:bg-line">
+      <Link
+        to={`/rep/${rep.id}`}
+        className="group flex items-center gap-3 rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2.5 transition hover:border-line-strong hover:bg-surface-2"
+        title={`Prepared ${settings.prepDepth} moves deep`}
+      >
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{rep.name}</div>
-          <div className="truncate text-xs text-muted">
-            {repStart(rep).moves.length > 0 && <>from {formatMoves(repStart(rep).sans)} · </>}
-            {data?.lines.length ?? 0} lines · {data?.cards.length ?? 0} moves · {due} due
+          <div className="truncate font-display text-[16px] font-medium">{rep.name}</div>
+          <div className="mt-0.5 truncate text-xs text-muted">
+            {repStart(rep).moves.length > 0 && <>{formatMoves(repStart(rep).sans)} · </>}
+            {data?.lines.length ?? 0} lines · {data?.cards.length ?? 0} moves
+            {due > 0 && <span className="font-medium text-maple"> · {due} due</span>}
           </div>
         </div>
-        {prep && data && data.moves.length > 0 && (
-          <div className="text-right">
-            <div className={`text-lg font-semibold ${scoreColor(prep.result.score)}`}>{pct(prep.result.score)}</div>
-            <div className="text-[10px] text-muted">prepared, {settings.prepDepth} moves deep</div>
-          </div>
-        )}
+        <ScoreRing value={prep && data && data.moves.length > 0 ? prep.result.score : undefined} size={44} />
       </Link>
     </li>
   )
@@ -211,10 +240,7 @@ function NewRepertoire() {
     const overlaps = await findOverlaps(color, startMoves)
     if (
       overlaps.length &&
-      !confirm(
-        `This overlaps with ${overlaps.map((r) => `"${r.name}"`).join(', ')}: the same positions would be in two ` +
-          'repertoires and be drilled twice. Create it anyway?',
-      )
+      !(await confirmOverlap(overlaps.map((r) => r.name)))
     )
       return
     const fallback = color === 'white' ? 'White repertoire' : 'Black repertoire'
@@ -224,12 +250,13 @@ function NewRepertoire() {
     navigate(builderUrl(rep.id, startMoves))
   }
   return (
-    <details className="card" open={params.has('newStart')}>
-      <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">Custom repertoire</summary>
-      <form onSubmit={submit} className="flex flex-col gap-2 border-t border-line p-3">
-        <p className="text-xs text-muted">
-          The White and Black plans create repertoires for you. Use this for anything they don't offer.
-        </p>
+    <details className="group card" open={params.has('newStart')}>
+      <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm">
+        <span className="font-display text-[15px] font-medium">Custom repertoire</span>
+        <span className="text-xs text-muted">for anything the plans don't offer</span>
+        <ChevronDown size={16} className="ml-auto text-muted transition group-open:rotate-180" />
+      </summary>
+      <form onSubmit={submit} className="flex flex-col gap-3 border-t border-line/70 p-4">
         <input
           className="input"
           placeholder="Vienna Game"
@@ -237,7 +264,7 @@ function NewRepertoire() {
           onChange={(e) => setName(e.target.value)}
           autoFocus={params.has('newStart')}
         />
-        <label className="flex flex-col gap-1 text-xs text-muted">
+        <label className="flex flex-col gap-1.5 text-xs text-muted">
           Starts after (optional)
           <input
             className="input"
@@ -248,7 +275,9 @@ function NewRepertoire() {
               setError(undefined)
             }}
           />
-          <span>These moves are set up, not drilled, and your score only counts what happens after them.</span>
+          <span className="leading-relaxed text-faint">
+            These moves are set up, not drilled, and your score only counts what happens after them.
+          </span>
         </label>
         {error && <p className="text-sm text-bad">{error}</p>}
         <div className="flex gap-2">
@@ -257,7 +286,7 @@ function NewRepertoire() {
               type="button"
               key={c}
               onClick={() => setColor(c)}
-              className={`btn flex-1 border ${color === c ? 'border-accent bg-surface-2' : 'border-line'}`}
+              className={`btn flex-1 border ${color === c ? 'border-brass/70 bg-brass/10 text-ink' : 'border-line text-muted hover:text-ink'}`}
             >
               <ColorDot color={c} /> {c === 'white' ? 'White' : 'Black'}
             </button>

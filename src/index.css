@@ -1,21 +1,64 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/fraunces/full.css';
+@import '@fontsource-variable/fraunces/full-italic.css';
+@import '@fontsource-variable/instrument-sans/index.css';
 @import '@lichess-org/chessground/assets/chessground.base.css';
-@import '@lichess-org/chessground/assets/chessground.brown.css';
 @import '@lichess-org/chessground/assets/chessground.cburnett.css';
 
+/*
+ * Two wooden themes. Dark ("walnut", the default): walnut surfaces, boxwood ink, maple primary
+ * buttons. Light ("maple"): maple surfaces, walnut ink, walnut primary buttons.
+ * `maple` is always the contrasting wood (maple on dark, walnut on light) and `on-maple` the text on it.
+ * Brass marks active and focused states; moss, amber and oxblood grade scores from good to bad.
+ */
 @theme {
-  --color-bg: #161512;
-  --color-surface: #262421;
-  --color-surface-2: #302e2c;
-  --color-line: #3d3a36;
-  --color-ink: #e8e6e3;
-  --color-muted: #9a9894;
-  --color-accent: #5fb36a;
-  --color-accent-strong: #4a9a55;
-  --color-warn: #d9a441;
-  --color-bad: #d9534f;
-  --color-info: #5b9bd5;
-  --font-sans: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-bg: #140f0a;
+  --color-surface: #1e1610;
+  --color-surface-2: #2a1f16;
+  --color-surface-3: #35281d;
+  --color-line: #3a2b1e;
+  --color-line-strong: #58432f;
+  --color-ink: #f2e5cc;
+  --color-muted: #a8917a;
+  --color-faint: #7a6552;
+  --color-maple: #ecd09f;
+  --color-on-maple: #24170c;
+  --color-brass: #d9aa55;
+  --color-accent: #a3c479;
+  --color-accent-strong: #86a95c;
+  --color-warn: #e8a05a;
+  --color-bad: #e36c56;
+  --color-info: #8db4d6;
+  --color-ivory: #f3e8d2;
+  --color-ebony: #120c08;
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pop: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-shake: shake 0.4s ease-in-out both;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+  @keyframes shake {
+    20%,
+    60% {
+      transform: translateX(-4px);
+    }
+    40%,
+    80% {
+      transform: translateX(4px);
+    }
+  }
 }
 
 html,
@@ -24,11 +67,132 @@ body,
   min-height: 100%;
 }
 
+/* Values that differ between the themes but aren't colours utilities use directly. */
+:root {
+  color-scheme: dark;
+  --primary-top: #f2dbb0;
+  --primary-bottom: #dcb77d;
+  --primary-hover-top: #f7e4bf;
+  --primary-hover-bottom: #e3c08a;
+  --primary-glow: rgb(236 208 159 / 0.45);
+  --card-sheen: rgb(255 225 180 / 0.025);
+  --card-highlight: rgb(255 225 180 / 0.05);
+  --card-shadow: 0 1px 0 rgb(0 0 0 / 0.3), 0 16px 32px -24px rgb(0 0 0 / 0.8);
+  --backdrop: rgb(8 5 3 / 0.6);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f4ebdb;
+  --color-surface: #fcf7ee;
+  --color-surface-2: #f4e9d6;
+  --color-surface-3: #ebdcc2;
+  --color-line: #e3d3b8;
+  --color-line-strong: #c9ae87;
+  --color-ink: #2b1d11;
+  --color-muted: #735840;
+  --color-faint: #a08870;
+  --color-maple: #8f5427;
+  --color-on-maple: #fcf4e6;
+  --color-brass: #a4731b;
+  --color-accent: #4f7a29;
+  --color-accent-strong: #3f661f;
+  --color-warn: #b3621a;
+  --color-bad: #b53b27;
+  --color-info: #33699a;
+  --primary-top: #a76b3f;
+  --primary-bottom: #834d26;
+  --primary-hover-top: #b27447;
+  --primary-hover-bottom: #8f552b;
+  --primary-glow: rgb(131 77 38 / 0.35);
+  --card-sheen: rgb(255 255 255 / 0.5);
+  --card-highlight: rgb(255 255 255 / 0.7);
+  --card-shadow: 0 1px 2px rgb(90 55 20 / 0.08), 0 14px 30px -22px rgb(90 55 20 / 0.45);
+  --backdrop: rgb(60 38 18 / 0.35);
+}
+
+html {
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
 body {
-  background: var(--color-bg);
+  background-color: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-brass) 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ---------- Board ---------- */
+
+/* A walnut frame around the playing surface, like a real board. */
+.board-frame {
+  position: relative;
+  padding: clamp(5px, 1.3vw, 11px);
+  border-radius: 12px;
+  background:
+    url('./assets/grain.svg'),
+    linear-gradient(150deg, #4d311c 0%, #2b1b0f 45%, #3b2615 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 220 170 / 0.16),
+    inset 0 0 0 1px rgb(0 0 0 / 0.45),
+    0 2px 0 rgb(0 0 0 / 0.35),
+    0 24px 48px -20px rgb(0 0 0 / 0.9);
+}
+.board-frame .board-wrap {
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.6),
+    0 1px 3px rgb(0 0 0 / 0.5);
+}
+
+/* Replays a glow around the board after each training move. */
+.board-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: board-flash 0.9s ease-out both;
+}
+.board-flash[data-kind='correct'] {
+  box-shadow:
+    inset 0 0 0 3px rgb(163 196 121 / 0.95),
+    0 0 36px rgb(163 196 121 / 0.35);
+}
+.board-flash[data-kind='wrong'] {
+  box-shadow:
+    inset 0 0 0 3px rgb(227 108 86 / 0.95),
+    0 0 36px rgb(227 108 86 / 0.4);
+}
+@keyframes board-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /* Chessground needs explicit dimensions; the wrapper is a square. */
@@ -37,8 +201,50 @@ body {
   height: 100%;
 }
 
+cg-board {
+  background-color: #e7c99b;
+  background-image: url('./assets/board-wood.svg');
+}
+cg-board square.last-move {
+  background-color: rgb(222 172 64 / 0.42);
+}
+cg-board square.selected {
+  background-color: rgb(118 150 64 / 0.55);
+}
+cg-board square.move-dest {
+  background: radial-gradient(rgb(46 26 10 / 0.42) 21%, transparent 22%);
+}
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 79%, rgb(46 26 10 / 0.38) 80%);
+}
+cg-board square.move-dest:hover,
+cg-board square.move-dest.hover {
+  background: rgb(222 172 64 / 0.4);
+}
+cg-board square.check {
+  background: radial-gradient(ellipse at center, rgb(230 40 20) 0%, rgb(210 30 10 / 0.9) 25%, transparent 89%);
+}
+
 coords {
   font-size: 10px;
+}
+.cg-wrap coords {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  opacity: 0.9;
+}
+/* Coordinates on dark squares are maple, on light squares walnut (a1 is dark). */
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(even) {
+  color: #efd7ad;
+}
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(odd) {
+  color: #8a5a31;
 }
 
 /* Chessground offsets the file letters 24px to the right, which overflows narrow screens.
@@ -52,21 +258,118 @@ coords {
   padding-right: 3px;
 }
 
-@utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+/* ---------- Dialogs ---------- */
+
+dialog.modal {
+  margin: auto;
+  width: min(28rem, calc(100vw - 2rem));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: visible;
 }
+dialog.modal[open] {
+  animation: var(--animate-pop);
+}
+dialog.modal::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(3px);
+  animation: fade-in 0.2s ease-out both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- Page entrance ---------- */
+
+/* Children of .stagger rise in one after another when a page opens. */
+.stagger > * {
+  animation: var(--animate-rise);
+}
+.stagger > :nth-child(2) {
+  animation-delay: 60ms;
+}
+.stagger > :nth-child(3) {
+  animation-delay: 120ms;
+}
+.stagger > :nth-child(4) {
+  animation-delay: 180ms;
+}
+.stagger > :nth-child(5) {
+  animation-delay: 240ms;
+}
+.stagger > :nth-child(n + 6) {
+  animation-delay: 300ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Components ---------- */
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap transition duration-150 select-none active:translate-y-px disabled:pointer-events-none disabled:opacity-40;
+}
+/* Maple, like the board's light squares. */
 @utility btn-primary {
-  @apply btn bg-accent-strong text-white hover:bg-accent;
+  @apply btn text-on-maple;
+  background: linear-gradient(180deg, var(--primary-top), var(--primary-bottom));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    inset 0 -1px 0 rgb(80 45 15 / 0.3),
+    0 1px 0 rgb(0 0 0 / 0.25),
+    0 8px 20px -10px var(--primary-glow);
+  &:hover {
+    background: linear-gradient(180deg, var(--primary-hover-top), var(--primary-hover-bottom));
+  }
 }
 @utility btn-ghost {
-  @apply btn bg-surface-2 text-ink hover:bg-line;
+  @apply btn border border-line bg-surface-2 text-ink hover:border-line-strong hover:bg-surface-3;
+  box-shadow: inset 0 1px 0 var(--card-highlight);
 }
 @utility btn-danger {
-  @apply btn bg-bad/80 text-white hover:bg-bad;
+  @apply btn border border-bad/50 text-bad hover:bg-bad/15;
+}
+@utility btn-danger-solid {
+  @apply btn bg-bad text-white shadow-[0_1px_0_rgb(0_0_0/0.25)] hover:brightness-110;
+}
+/* Small toggle button; add chip-on when selected. */
+@utility chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs font-medium text-muted transition hover:border-line-strong hover:text-ink;
+}
+@utility chip-on {
+  @apply border-brass/70 bg-brass/12 text-ink;
 }
 @utility card {
-  @apply rounded-lg border border-line bg-surface;
+  @apply rounded-xl border border-line;
+  background: linear-gradient(180deg, var(--card-sheen), transparent 120px), var(--color-surface);
+  box-shadow:
+    inset 0 1px 0 var(--card-highlight),
+    var(--card-shadow);
 }
 @utility input {
-  @apply rounded-md border border-line bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-accent;
+  @apply rounded-lg border border-line bg-bg/70 px-3 py-2 text-sm text-ink transition outline-none placeholder:text-faint focus:border-brass/70 focus:ring-2 focus:ring-brass/20;
+}
+/* Small engraved label above a heading or a group of controls. */
+@utility eyebrow {
+  @apply text-[11px] font-semibold tracking-[0.14em] text-brass/90 uppercase;
+}
+@utility font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: 'SOFT' 50;
+}
+@utility page-title {
+  @apply font-display text-2xl leading-tight font-medium tracking-tight text-ink md:text-3xl;
 }
