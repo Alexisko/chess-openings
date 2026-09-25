@@ -3,6 +3,16 @@
 Build a chess opening repertoire from scratch and learn it with spaced repetition. See how well prepared you
 are against the moves real opponents play.
 
+- **Repertoire plan (White / Black):** guides you to a complete repertoire for each colour. Choose your first
+  move as White (e.g. 1.e4), then an answer to each of Black's main replies (Italian, Ruy Lopez, Vienna… against
+  1...e5, a line against the Sicilian, the French…). As Black, choose a defence to 1.e4, 1.d4, 1.c4 and 1.Nf3,
+  then an answer to White's main tries. Each answer becomes a repertoire, opened in the builder with its main
+  line ready to save.
+  - Options come from a curated catalogue with a short description, style and amount of theory, how often the
+    move is played and how it scores, and how often you played it in your own games.
+  - Replies and their frequencies come from the explorer. Starting a repertoire deeper (the Italian starts
+    after 3.Bc4) brings up the replies it doesn't cover (2...Nf6 Petrov, 2...d6 Philidor).
+  - Home shows each colour's coverage, overall preparedness and next choice to make.
 - **Builder:** play moves on the board next to the Lichess opening explorer (filtered by time control,
   rating or the masters database) and Stockfish.
   - The engine warns when a repertoire move is clearly worse than its best move.
@@ -56,8 +66,10 @@ src/lib/explorer Lichess explorer client (cache + throttled queue)
 src/lib/engine/  Stockfish worker, cloud eval, UCI parsing
 src/lib/srs/     FSRS scheduling, session planning, line runs
 src/lib/prep/    preparedness score and gap finder
+src/lib/openings curated catalogue of openings for the repertoire plan
+src/lib/plan/    repertoire plan per colour (which repertoire answers each reply, what is left to choose)
 src/lib/games/   game import (Lichess, Chess.com), comparison with the repertoire, engine checks
-src/features/    pages: dashboard, builder, train, games, settings
+src/features/    pages: dashboard, plan, builder, train, games, settings
 ```
 
 GPL-3.0 dependencies (chessground, chessops, Stockfish) mean that a distributed version of the app must

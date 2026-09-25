@@ -5,6 +5,7 @@ import { BuilderPage } from './features/builder/BuilderPage'
 import { GamesPage } from './features/games/GamesPage'
 import { HomePage } from './features/dashboard/HomePage'
 import { OverviewPage } from './features/overview/OverviewPage'
+import { PlanPage } from './features/plan/PlanPage'
 import { RepertoirePage } from './features/dashboard/RepertoirePage'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { TrainPage } from './features/train/TrainPage'
@@ -70,6 +71,7 @@ export default function App() {
       <main className="flex-1 px-4 py-4">
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/plan/:color" element={<PlanPage />} />
           <Route path="/rep/:id" element={<RepertoirePage />} />
           <Route path="/rep/:id/build" element={<BuilderPage />} />
           <Route path="/rep/:id/tree" element={<OverviewPage />} />
