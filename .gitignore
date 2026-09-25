@@ -29,3 +29,6 @@ public/stockfish
 # Cloudflare Worker local state
 .wrangler
 worker/worker-configuration.d.ts
+
+# Claude desktop app dev server configs (per machine)
+.claude/launch.json
