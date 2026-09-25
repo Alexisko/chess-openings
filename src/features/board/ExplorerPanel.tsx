@@ -19,14 +19,21 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
   if (error instanceof AuthRequiredError)
     return (
       <div className="text-sm">
-        <p className="mb-2 text-muted">Log in with Lichess to see opponent statistics.</p>
+        <p className="mb-3 text-muted">Log in with Lichess to see what opponents play here.</p>
         <button className="btn-primary" onClick={() => startLogin()}>
           Log in with Lichess
         </button>
       </div>
     )
   if (error) return <p className="text-sm text-bad">{error.message}</p>
-  if (!data) return <p className="text-sm text-muted">{loading ? 'Loading…' : ''}</p>
+  if (!data)
+    return loading ? (
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-6 animate-pulse rounded-md bg-surface-2" style={{ animationDelay: `${i * 120}ms` }} />
+        ))}
+      </div>
+    ) : null
 
   const total = totalGames(data)
   if (!total) return <p className="text-sm text-muted">No games in the database from this position — you're out of book.</p>
@@ -37,17 +44,25 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
   return (
     <div className={loading ? 'opacity-60' : ''}>
       {data.opening && (
-        <div className="mb-2 text-xs text-muted">
-          <span className="font-mono">{data.opening.eco}</span> {data.opening.name}
+        <div className="mb-3 flex items-baseline gap-2">
+          <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-brass">
+            {data.opening.eco}
+          </span>
+          <span className="font-display text-[15px] italic">{data.opening.name}</span>
         </div>
       )}
       {!myTurn && (
-        <div className="mb-2 text-xs">
-          Replies prepared: <span className="font-semibold">{pct(preparedShare)}</span> of games
+        <div className="mb-3 flex items-center gap-2 text-xs text-muted">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: pct(preparedShare) }} />
+          </div>
+          <span>
+            <span className="font-semibold text-ink tabular-nums">{pct(preparedShare)}</span> of replies prepared
+          </span>
         </div>
       )}
       <table className="w-full text-sm">
-        <thead className="text-left text-xs text-muted">
+        <thead className="text-left text-[11px] tracking-wide text-faint uppercase">
           <tr>
             <th className="w-16 font-normal">Move</th>
             <th className="w-12 text-right font-normal">%</th>
@@ -65,9 +80,9 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
               <tr
                 key={m.uci}
                 onClick={() => onPick(m.uci)}
-                className={`cursor-pointer border-t border-line hover:bg-surface-2 ${inRep ? 'text-accent' : ''}`}
+                className={`cursor-pointer border-t border-line/70 transition-colors hover:bg-surface-3/70 ${inRep ? 'text-accent' : ''}`}
               >
-                <td className="py-1 font-medium">
+                <td className="py-1.5 pl-1 font-semibold">
                   {m.san}
                   {inRep && <span title="In your repertoire"> {myTurn ? '★' : '✓'}</span>}
                 </td>

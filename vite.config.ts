@@ -19,8 +19,8 @@ export default defineConfig({
         name: 'Opening Trainer',
         short_name: 'Openings',
         description: 'Build and learn a chess opening repertoire with spaced repetition',
-        theme_color: '#1c1b19',
-        background_color: '#1c1b19',
+        theme_color: '#140f0a',
+        background_color: '#140f0a',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
@@ -35,6 +35,11 @@ export default defineConfig({
         globIgnores: ['stockfish/**'],
         navigateFallback: `${base}index.html`,
         runtimeCaching: [
+          {
+            urlPattern: /\.woff2$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts' },
+          },
           {
             urlPattern: /\/stockfish\//,
             handler: 'CacheFirst',

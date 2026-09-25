@@ -1,17 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#1c1b19"/>
-  <g fill="#b58863">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b2615"/>
+      <stop offset="1" stop-color="#170f09"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect x="10" y="10" width="44" height="44" rx="3" fill="#2b1b0f"/>
+  <g fill="#9a6036">
     <rect x="12" y="12" width="10" height="10"/><rect x="32" y="12" width="10" height="10"/>
     <rect x="22" y="22" width="10" height="10"/><rect x="42" y="22" width="10" height="10"/>
     <rect x="12" y="32" width="10" height="10"/><rect x="32" y="32" width="10" height="10"/>
     <rect x="22" y="42" width="10" height="10"/><rect x="42" y="42" width="10" height="10"/>
   </g>
-  <g fill="#f0d9b5">
+  <g fill="#ecd09f">
     <rect x="22" y="12" width="10" height="10"/><rect x="42" y="12" width="10" height="10"/>
     <rect x="12" y="22" width="10" height="10"/><rect x="32" y="22" width="10" height="10"/>
     <rect x="22" y="32" width="10" height="10"/><rect x="42" y="32" width="10" height="10"/>
     <rect x="12" y="42" width="10" height="10"/><rect x="32" y="42" width="10" height="10"/>
   </g>
-  <path d="M17 47 L17 27 L37 27" fill="none" stroke="#5fb36a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M33 21 L40 27 L33 33" fill="none" stroke="#5fb36a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 47 L17 27 L37 27 M33 21 L40 27 L33 33" stroke="#170f09" stroke-width="9"/>
+    <path d="M17 47 L17 27 L37 27 M33 21 L40 27 L33 33" stroke="#e0b25c" stroke-width="5"/>
+  </g>
 </svg>

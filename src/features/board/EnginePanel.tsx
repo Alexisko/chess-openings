@@ -4,21 +4,23 @@ import { formatScore, type Evaluation } from '../../lib/engine/uci'
 
 /** Evaluation bar plus the engine's best lines in SAN. */
 export function EnginePanel({ evaluation, onPick }: { evaluation: Evaluation | null; onPick: (uci: string) => void }) {
-  if (!evaluation) return <p className="text-sm text-muted">Analysing…</p>
+  if (!evaluation) return <p className="animate-pulse text-sm text-muted">Analysing…</p>
   return (
     <div className="flex flex-col gap-2">
       <EvalBar line={evaluation.lines[0]} />
       <ul className="flex flex-col gap-1 text-sm">
         {evaluation.lines.map((l, i) => (
           <li key={i} className="flex gap-2">
-            <span className="w-12 shrink-0 font-mono text-xs leading-5">{formatScore(l)}</span>
-            <button className="truncate text-left text-muted hover:text-ink" onClick={() => onPick(l.pv[0])}>
+            <span className="w-12 shrink-0 rounded bg-surface-3 px-1 text-center text-xs leading-5 font-semibold tabular-nums">
+              {formatScore(l)}
+            </span>
+            <button className="truncate text-left text-muted transition-colors hover:text-ink" onClick={() => onPick(l.pv[0])}>
               {pvToSan(evaluation.fen, l.pv)}
             </button>
           </li>
         ))}
       </ul>
-      <div className="text-[10px] text-muted">
+      <div className="text-[10px] text-faint">
         {evaluation.source === 'cloud' ? 'Lichess cloud' : 'Stockfish 19'} · depth {evaluation.depth}
       </div>
     </div>
