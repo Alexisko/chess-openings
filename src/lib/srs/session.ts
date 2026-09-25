@@ -1,6 +1,6 @@
 import type { RepMove, ReviewMode } from '../../db/schema'
 import { sameMove } from '../chess/position'
-import type { PlannedRun } from './plan'
+import { LEAD_IN, focusPlies, type PlannedRun } from './plan'
 
 export type AttemptResult =
   | { kind: 'correct'; move: RepMove; graded: boolean }
@@ -9,8 +9,11 @@ export type AttemptResult =
 
 /**
  * Plays one line: opponent moves are given, the owner's moves must be found.
- * Only the first attempt at each position counts; after a mistake the correct
- * move is shown and must be played before continuing.
+ * Only the run's focus moves are asked; the owner's mastered moves play by
+ * themselves, and a long mastered stretch between two focus moves is skipped
+ * down to a short lead-in. Only the first attempt at each position counts;
+ * after a mistake the correct move is shown and must be played before
+ * continuing.
  */
 export class LineRun {
   ply: number
@@ -23,11 +26,13 @@ export class LineRun {
 
   readonly run: PlannedRun
   readonly mode: ReviewMode
+  private readonly focusPlies: number[]
 
   constructor(run: PlannedRun, mode: ReviewMode, opts: { demo?: boolean } = {}) {
     this.run = run
     this.mode = mode
     this.ply = run.startPly
+    this.focusPlies = focusPlies(run.line, run.focus)
     this.demo = opts.demo ?? false
   }
 
@@ -40,17 +45,17 @@ export class LineRun {
   }
 
   get finished() {
-    return this.ply >= this.moves.length
+    return this.ply >= this.run.endPly
   }
 
   get awaitingUser() {
-    return !this.finished && this.expected!.byMe
+    return !this.finished && this.focusPlies.includes(this.ply)
   }
 
-  /** Plays the opponent's move; returns it. */
-  advanceOpponent(): RepMove {
+  /** Plays the next move that isn't asked (the opponent's or a mastered one of the owner's); returns it. */
+  advanceAuto(): RepMove {
     const m = this.expected
-    if (!m || m.byMe) throw new Error('Not the opponent to move')
+    if (!m || this.finished || this.awaitingUser) throw new Error('Nothing to play automatically')
     this.ply++
     return m
   }
@@ -61,7 +66,7 @@ export class LineRun {
    */
   submit(uci: string): AttemptResult {
     const expected = this.expected
-    if (!expected || !expected.byMe) throw new Error('Not your move')
+    if (!expected || !this.awaitingUser) throw new Error('Not your move')
     const correct = sameMove(expected.fromFen, uci, expected.uci)
     const first = !this.attempted.has(this.ply)
     this.attempted.add(this.ply)
@@ -69,6 +74,8 @@ export class LineRun {
     if (correct) {
       this.mustRetry = false
       this.ply++
+      const next = this.focusPlies.find((p) => p >= this.ply)
+      if (next !== undefined && next - this.ply > LEAD_IN) this.ply = next - LEAD_IN
       return { kind: 'correct', move: expected, graded: graded }
     }
     if (!first) return { kind: 'retry-wrong', expected }

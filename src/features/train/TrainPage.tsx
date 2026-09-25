@@ -175,7 +175,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
     }
   }, [mode, pass])
 
-  // Auto-play the opponent's moves and advance when the line is finished.
+  // Auto-play the opponent's and the mastered moves, and advance when the run is finished.
   useEffect(() => {
     if (!run) return
     if (run.finished) {
@@ -184,7 +184,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
     }
     if (!run.awaitingUser) {
       const t = setTimeout(() => {
-        run.advanceOpponent()
+        run.advanceAuto()
         rerender()
       }, 450)
       return () => clearTimeout(t)
@@ -246,7 +246,8 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   // The line so far, with the last move picked out.
   const words = lineText(run.ply).split(' ')
   const lastWord = run.ply > 0 ? words.pop() : undefined
-  const progress = (index + (run.finished ? 1 : run.ply / Math.max(1, line.moves.length))) / queue.length
+  const { startPly, endPly } = current.run
+  const progress = (index + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / queue.length
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -284,7 +285,13 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
       </div>
 
       <div className="flex flex-col gap-4 md:pt-[4.25rem]">
-        <FeedbackCard key={fbId || `${index}-${pass}`} feedback={feedback} awaiting={run.awaitingUser} demo={run.demo} />
+        <FeedbackCard
+          key={fbId || `${index}-${pass}`}
+          feedback={feedback}
+          awaiting={run.awaitingUser}
+          demo={run.demo}
+          autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
+        />
 
         <div className="card px-4 py-3">
           <div className="eyebrow mb-1.5">Line so far</div>
@@ -298,7 +305,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
             )}
             {!lastWord && !words.join('') && <span className="text-faint">Starting position</span>}
           </p>
-          {line.end === 'transposition' && run.finished && (
+          {line.end === 'transposition' && run.finished && endPly === line.moves.length && (
             <p className="mt-2 text-xs text-muted">↪ This line transposes into another one you know.</p>
           )}
         </div>
@@ -331,7 +338,18 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   )
 }
 
-function FeedbackCard({ feedback, awaiting, demo }: { feedback?: Feedback; awaiting: boolean; demo: boolean }) {
+function FeedbackCard({
+  feedback,
+  awaiting,
+  demo,
+  autoMine,
+}: {
+  feedback?: Feedback
+  awaiting: boolean
+  demo: boolean
+  /** The next move is one of the owner's mastered moves, played automatically. */
+  autoMine: boolean
+}) {
   const kind = feedback?.kind
   const tone =
     kind === 'correct'
@@ -362,7 +380,7 @@ function FeedbackCard({ feedback, awaiting, demo }: { feedback?: Feedback; await
   return (
     <div className={`card flex min-h-20 animate-pop items-center gap-3.5 px-4 py-3.5 ${tone}`} aria-live="polite">
       <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${iconCls}`}>{icon}</span>
-      <p className="text-[15px] leading-snug">{feedback?.text ?? (awaiting ? 'Your move.' : 'Watch the reply…')}</p>
+      <p className="text-[15px] leading-snug">{feedback?.text ?? (awaiting ? 'Your move.' : autoMine ? 'Playing known moves…' : 'Watch the reply…')}</p>
     </div>
   )
 }

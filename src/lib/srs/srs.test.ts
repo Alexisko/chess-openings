@@ -22,6 +22,8 @@ describe('planning', () => {
     c = gradeCard(c, true, new Date('2026-09-01')).card
     return { ...c, state: State.Review, due: new Date(now.getTime() + dueInDays * 86400e3) }
   }
+  /** A well-known card: just reviewed, long memory, not weak. */
+  const strong = () => ({ ...learned(30), last_review: now, stability: 100 })
 
   it('covers all due cards with as few lines as possible', () => {
     const cards: CardMap = new Map([
@@ -50,7 +52,7 @@ describe('planning', () => {
   it('drills weak cards starting two moves earlier', () => {
     const weak = { ...learned(-30), lapses: 3 }
     const cards: CardMap = new Map([
-      ['x', learned(10)],
+      ['x', strong()],
       ['y', weak],
     ])
     const l: Line = {
@@ -68,7 +70,53 @@ describe('planning', () => {
       end: 'leaf',
     }
     const runs = planDrill([l], cards, now)
-    expect(runs[0]).toMatchObject({ startPly: 2, focus: ['y'] })
+    expect(runs[0]).toMatchObject({ startPly: 2, endPly: 7, focus: ['y'] })
+  })
+
+  /** A line of `plies` moves, the owner's at even plies with card keys `${prefix}${ply}`. */
+  const chain = (id: string, plies: number, prefix = ''): Line => {
+    const moves = Array.from({ length: plies }, (_, i) =>
+      i % 2 === 0 ? { byMe: true, fromKey: `${i < 10 ? '' : prefix}${i}` } : { byMe: false },
+    )
+    return {
+      id,
+      moves: moves as never,
+      cardKeys: moves.filter((m) => m.byMe).map((m) => m.fromKey!),
+      end: 'leaf',
+    }
+  }
+
+  it('starts similar variations near where they split and skips the mastered tail', () => {
+    // Two lines share plies 0-9 and split at ply 10.
+    const a = chain('a', 16, 'a')
+    const b = chain('b', 16, 'b')
+    const cards: CardMap = new Map([...new Set([...a.cardKeys, ...b.cardKeys])].map((k) => [k, learned(5)]))
+    cards.set('a12', learned(-1))
+    cards.set('b10', learned(-1))
+    cards.set('b14', learned(-1))
+    const runs = planReview([a, b], cards, now)
+    expect(runs.map((r) => [r.line.id, r.startPly, r.endPly, r.focus])).toEqual([
+      ['a', 8, 13, ['a12']],
+      ['b', 6, 15, ['b10', 'b14']],
+    ])
+  })
+
+  it('drills weak cards on the same line in one run', () => {
+    const l = chain('l', 12)
+    const cards: CardMap = new Map(l.cardKeys.map((k) => [k, strong()]))
+    cards.set('4', { ...learned(-30), lapses: 3 })
+    cards.set('8', { ...learned(-30), lapses: 2 })
+    const runs = planDrill([l], cards, now)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({ startPly: 0, endPly: 9 })
+    expect(runs[0].focus.sort()).toEqual(['4', '8'])
+  })
+
+  it('learns a new branch from near the branch point', () => {
+    const l = chain('l', 14)
+    const cards: CardMap = new Map(l.cardKeys.map((k) => [k, learned(10)]))
+    cards.set('12', createEmptyCard())
+    expect(planLearn([l], cards, 5)[0]).toMatchObject({ startPly: 8, endPly: 13, focus: ['12'] })
   })
 })
 
@@ -83,14 +131,36 @@ describe('line runs and grading', () => {
     const rep = await createRepertoire('Black', 'black', d)
     await addLine(rep, ['e2e4', 'c7c5', 'g1f3', 'd7d6'], {}, d)
     const [l] = enumerateLines(buildGraph(await loadMoves(rep.id, d), 'black'))
-    const run = new LineRun({ line: l, startPly: 0, focus: [] }, 'review')
-    expect(run.advanceOpponent().san).toBe('e4')
+    const run = new LineRun({ line: l, startPly: 0, endPly: l.moves.length, focus: l.cardKeys }, 'review')
+    expect(run.advanceAuto().san).toBe('e4')
     const wrong = run.submit('e7e5') // a good move, but not the repertoire move
     expect(wrong).toMatchObject({ kind: 'wrong', graded: true })
     expect(run.submit('e7e6')).toMatchObject({ kind: 'retry-wrong' })
     expect(run.submit('c7c5')).toMatchObject({ kind: 'correct', graded: false })
-    run.advanceOpponent()
+    run.advanceAuto()
     expect(run.submit('d7d6')).toMatchObject({ kind: 'correct', graded: true })
+    expect(run.finished).toBe(true)
+  })
+
+  it('plays mastered moves by itself and jumps over long mastered stretches', async () => {
+    const rep = await createRepertoire('White', 'white', d)
+    // 1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3
+    const ucis = ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1b5', 'a7a6', 'b5a4', 'g8f6', 'e1g1', 'f8e7', 'f1e1', 'b7b5', 'a4b3']
+    await addLine(rep, ucis, {}, d)
+    const [l] = enumerateLines(buildGraph(await loadMoves(rep.id, d), 'white'))
+    const focus = [l.moves[0].fromKey, l.moves[12].fromKey]
+    const run = new LineRun({ line: l, startPly: 0, endPly: 13, focus }, 'review')
+    expect(run.submit('e2e4')).toMatchObject({ kind: 'correct', graded: true })
+    // The next focus move is 12 plies away: skip to its lead-in.
+    expect(run.ply).toBe(8)
+    expect(run.awaitingUser).toBe(false)
+    expect(run.advanceAuto().san).toBe('O-O') // mastered, played for you
+    run.advanceAuto()
+    expect(run.advanceAuto().san).toBe('Re1')
+    run.advanceAuto()
+    expect(run.awaitingUser).toBe(true)
+    expect(() => run.advanceAuto()).toThrow()
+    expect(run.submit('a4b3')).toMatchObject({ kind: 'correct', graded: true })
     expect(run.finished).toBe(true)
   })
 
