@@ -2,10 +2,12 @@ import { pct } from '../../components/format'
 import { WdlBar } from '../../components/ui'
 import { startLogin } from '../../lib/auth/lichess'
 import { formatScore, type Evaluation } from '../../lib/engine/uci'
-import { AuthRequiredError, totalGames, type ExplorerState } from '../../lib/explorer'
+import { AuthRequiredError, describeFilter, totalGames, type ExplorerFilter, type ExplorerState } from '../../lib/explorer'
 
 interface Props {
   state: ExplorerState
+  /** The filter the table shows. */
+  filter: ExplorerFilter
   /** UCI moves already in the repertoire from this position. */
   repMoves: Set<string>
   myTurn: boolean
@@ -14,7 +16,7 @@ interface Props {
 }
 
 /** Opening explorer table: what players at the chosen level play here. */
-export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: Props) {
+export function ExplorerPanel({ state, filter, repMoves, myTurn, evaluation, onPick }: Props) {
   const { data, error, loading } = state
   if (error instanceof AuthRequiredError)
     return (
@@ -36,7 +38,14 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
     ) : null
 
   const total = totalGames(data)
-  if (!total) return <p className="text-sm text-muted">No games in the database from this position — you're out of book.</p>
+  if (!total)
+    return (
+      <p className="text-sm text-muted">
+        {filter.db === 'masters'
+          ? 'No master games from this position.'
+          : "No games in the database from this position — you're out of book."}
+      </p>
+    )
 
   const evalByMove = new Map((evaluation?.lines ?? []).map((l) => [l.pv[0], l]))
   const preparedShare = data.moves.filter((m) => repMoves.has(m.uci)).reduce((s, m) => s + totalGames(m), 0) / total
@@ -89,6 +98,35 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
           })}
         </tbody>
       </table>
+      <p className="mt-2 text-[11px] text-faint">{describeFilter(filter)}</p>
+    </div>
+  )
+}
+
+/**
+ * Lichess players / Masters switch. It changes only what the panel shows; the
+ * saved filter (and the rating and speed choices in it) stays as it is.
+ */
+export function ExplorerSourceToggle({
+  filter,
+  onChange,
+}: {
+  filter: ExplorerFilter
+  onChange: (db: ExplorerFilter['db']) => void
+}) {
+  return (
+    <div className="flex gap-1" role="group" aria-label="Explorer database">
+      {(['lichess', 'masters'] as const).map((d) => (
+        <button
+          key={d}
+          className={`chip py-0.5 ${filter.db === d ? 'chip-on' : ''}`}
+          aria-pressed={filter.db === d}
+          title={describeFilter({ ...filter, db: d })}
+          onClick={() => onChange(d)}
+        >
+          {d === 'lichess' ? 'Lichess' : 'Masters'}
+        </button>
+      ))}
     </div>
   )
 }

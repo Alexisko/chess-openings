@@ -43,6 +43,36 @@ export function filterHash(f: ExplorerFilter): string {
   return `lichess:${[...f.speeds].sort().join(',')}:${[...f.ratings].sort((a, b) => a - b).join(',')}`
 }
 
+/**
+ * Rating buckets as ranges, joining neighbouring buckets: [1600, 1800, 2000]
+ * reads "1600–2199" (each bucket runs up to the next one; the last is "2500+").
+ */
+export function ratingRanges(ratings: number[]): string {
+  const idx = [...new Set(ratings)]
+    .map((r) => RATING_BUCKETS.indexOf(r as (typeof RATING_BUCKETS)[number]))
+    .filter((i) => i >= 0)
+    .sort((a, b) => a - b)
+  const runs: [number, number][] = []
+  for (const i of idx) {
+    const run = runs.at(-1)
+    if (run && run[1] === i - 1) run[1] = i
+    else runs.push([i, i])
+  }
+  return runs
+    .map(([a, b]) => {
+      const lo = RATING_BUCKETS[a]
+      return b === RATING_BUCKETS.length - 1 ? `${lo}+` : `${lo}–${RATING_BUCKETS[b + 1] - 1}`
+    })
+    .join(', ')
+}
+
+/** What a filter covers, e.g. "Lichess players rated 1600–2199 · blitz, rapid, classical". */
+export function describeFilter(f: ExplorerFilter): string {
+  if (f.db === 'masters') return 'Masters: over-the-board games between players rated 2200+'
+  const speeds = ALL_SPEEDS.filter((s) => f.speeds.includes(s)).join(', ')
+  return `Lichess players rated ${ratingRanges(f.ratings)} · ${speeds}`
+}
+
 export function explorerUrl(fen: string, f: ExplorerFilter): string {
   const params = new URLSearchParams({ fen, moves: '30', topGames: '0' })
   if (f.db === 'lichess') {

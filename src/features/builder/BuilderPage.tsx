@@ -21,12 +21,12 @@ import { myMove, pathTo } from '../../lib/chess/graph'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
-import { moveShare, useCachedExplorer, useExplorer, useOpeningNames } from '../../lib/explorer'
+import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type ExplorerFilter } from '../../lib/explorer'
 import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
-import { ExplorerPanel } from '../board/ExplorerPanel'
+import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
 import { builderUrl } from '../../lib/routes'
 import { confirmDialog } from '../../lib/dialog'
 
@@ -35,6 +35,16 @@ function readEngineToggle() {
     return localStorage.getItem('engine') !== 'off'
   } catch {
     return true
+  }
+}
+
+/** The database picked on the explorer panel (on this device), if any. */
+function readExplorerDb(): ExplorerFilter['db'] | undefined {
+  try {
+    const db = localStorage.getItem('explorerDb')
+    return db === 'lichess' || db === 'masters' ? db : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -81,6 +91,7 @@ export function BuilderPage() {
   )
 
   const [engineOn, setEngineOn] = useState(readEngineToggle)
+  const [panelDb, setPanelDb] = useState(readExplorerDb)
   const [status, setStatus] = useState<string>()
 
   const fens = useMemo(() => [START_FEN, ...played.map((p) => p.fen)], [played])
@@ -100,7 +111,10 @@ export function BuilderPage() {
   const repMovesHere = useMemo(() => new Set((graph?.movesFrom.get(key) ?? []).map((m) => m.uci)), [graph, key])
   const mine = graph ? myMove(graph, key) : undefined
 
-  const explorerState = useExplorer(fen, settings?.explorerFilter)
+  // The panel can show the other database; scores and the tree keep the saved filter.
+  const savedFilter = settings?.explorerFilter
+  const panelFilter = useMemo(() => savedFilter && { ...savedFilter, db: panelDb ?? savedFilter.db }, [savedFilter, panelDb])
+  const explorerState = useExplorer(fen, panelFilter)
   const evaluation = useEval(fen, engineOn)
   const loss = useMoveLoss(fen, mine?.uci, color, evaluation)
 
@@ -115,7 +129,10 @@ export function BuilderPage() {
   )
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
   // Opening names along the line (cached explorer data; the current position is fetched above).
-  const openings = useOpeningNames(pathKeys, settings?.explorerFilter)
+  // Names are the same in both databases: take them from whichever has the position cached.
+  const panelNames = useOpeningNames(pathKeys, panelFilter)
+  const savedNames = useOpeningNames(pathKeys, savedFilter)
+  const openings = useMemo(() => panelNames.map((o, i) => o ?? savedNames[i]), [panelNames, savedNames])
   const trail = useMemo(() => openingTrail(openings, cursor), [openings, cursor])
 
   const goTo = useCallback(
@@ -183,7 +200,7 @@ export function BuilderPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [setCursor, floor, forward, unsaved])
 
-  if (data === undefined || !settings) return null
+  if (data === undefined || !settings || !panelFilter) return null
   if (data === null || !tree) return <p className="text-muted">Repertoire not found.</p>
   const rep = data.rep
 
@@ -332,7 +349,25 @@ export function BuilderPage() {
       </div>
 
       <div className="flex flex-col gap-5">
-        <Section title={myTurn ? 'Your move' : 'Opponent replies'}>
+        <Section
+          title={myTurn ? 'Your move' : 'Opponent replies'}
+          right={
+            <ExplorerSourceToggle
+              filter={panelFilter}
+              onChange={(db) => {
+                // Only a choice that differs from Settings is kept, so Settings still decides otherwise.
+                const override = db === settings.explorerFilter.db ? undefined : db
+                setPanelDb(override)
+                try {
+                  if (override) localStorage.setItem('explorerDb', override)
+                  else localStorage.removeItem('explorerDb')
+                } catch {
+                  // Preference is optional.
+                }
+              }}
+            />
+          }
+        >
           <div className="mb-3 text-sm">
             {myTurn ? (
               mine ? (
@@ -367,6 +402,7 @@ export function BuilderPage() {
           )}
           <ExplorerPanel
             state={explorerState}
+            filter={panelFilter}
             repMoves={repMovesHere}
             myTurn={myTurn}
             evaluation={engineOn ? evaluation : null}
