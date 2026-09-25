@@ -181,4 +181,24 @@ describe('repertoire plan', () => {
     expect((moved.root as MoveNode).moves.map((m) => m.san)).toEqual(['d4', 'e4'])
     expect((moved.root as MoveNode).moves[1].child.counted).toBe(false)
   })
+
+  it('keeps a second answer as a side line once another is made main', () => {
+    const scotch = rep('vs Scotch', 'black', ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'd2d4'])
+    const caro = rep('Caro-Kann', 'black', ['e2e4', 'c7c6'])
+    // Oldest first: 1...e5 is the main answer and the Caro-Kann a side line.
+    const before = buildPlan({ color: 'black', reps: [scotch, caro], choices: {}, explorer: new Map() })
+    expect((at(before.root, ['e4']) as MoveNode).moves.map((m) => m.san)).toEqual(['e5', 'c6'])
+    expect(before.sideLines.map((r) => r.name)).toEqual(['Caro-Kann'])
+
+    // Making 1...c6 main: the Scotch prep stays in the plan but isn't counted.
+    const after = buildPlan({ color: 'black', reps: [scotch, caro], choices: { [keyAfter(E4)]: 'c7c6' }, explorer: new Map() })
+    const e4 = at(after.root, ['e4']) as MoveNode
+    expect(e4.moves.map((m) => [m.san, m.source, m.reps.map((r) => r.name), m.child.counted])).toEqual([
+      ['c6', 'choice', ['Caro-Kann'], true],
+      ['e5', 'repertoire', ['vs Scotch'], false],
+    ])
+    expect(after.covered.map((c) => c.rep.name)).toEqual(['Caro-Kann'])
+    expect(after.sideLines.map((r) => r.name)).toEqual(['vs Scotch'])
+    expect(after.offPlan).toEqual([])
+  })
 })

@@ -121,6 +121,11 @@ export interface Plan {
   needed: string[]
   /** Repertoires of this colour the plan never reaches. */
   offPlan: Repertoire[]
+  /**
+   * Repertoires reached only through a second answer, e.g. a Scotch prepared
+   * against one opponent when your main answer to 1.e4 is the Caro-Kann.
+   */
+  sideLines: Repertoire[]
   /** Nothing chosen and no repertoire yet. */
   empty: boolean
 }
@@ -137,6 +142,7 @@ export function buildPlan({ color, reps, choices, explorer }: PlanInput): Plan {
   const covered: CoveredNode[] = []
   const decisions: DecisionNode[] = []
   const reached = new Set<string>()
+  const reachedMain = new Set<string>()
   const starts = reps.map((r) => ({ rep: r.rep, moves: repStart(r.rep).moves }))
   /** Repertoire starts that pass through `path` and continue: the next move of each. */
   const onTheWay = (path: string[]) =>
@@ -148,7 +154,10 @@ export function buildPlan({ color, reps, choices, explorer }: PlanInput): Plan {
 
     const inside = reps.filter((r) => r.graph.depth.has(key))
     if (inside.length) {
-      for (const r of inside) reached.add(r.rep.id)
+      for (const r of inside) {
+        reached.add(r.rep.id)
+        if (counted) reachedMain.add(r.rep.id)
+      }
       const node: CoveredNode = { ...base, kind: 'covered', rep: inside[0].rep, others: inside.slice(1).map((r) => r.rep) }
       if (counted) covered.push(node)
       return node
@@ -233,6 +242,7 @@ export function buildPlan({ color, reps, choices, explorer }: PlanInput): Plan {
     keys: keyList,
     needed: keyList.filter((k) => !explorer.has(k)),
     offPlan: reps.filter((r) => !reached.has(r.rep.id)).map((r) => r.rep),
+    sideLines: reps.filter((r) => reached.has(r.rep.id) && !reachedMain.has(r.rep.id)).map((r) => r.rep),
     empty: !reps.length && !Object.keys(choices).length,
   }
 }

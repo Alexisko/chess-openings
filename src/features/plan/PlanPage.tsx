@@ -230,12 +230,12 @@ function NodeView({ node, level, ctx }: { node: PlanNode; level: number; ctx: Ct
 /** Follows your moves from a node until the next branch point. */
 function chainOf(node: PlanNode) {
   const moves: { san: string; ply: number; source: 'choice' | 'repertoire'; reps: Repertoire[]; fromKey: string }[] = []
-  const extra: { node: PlanNode; san: string; ply: number; reps: Repertoire[] }[] = []
+  const extra: { node: PlanNode; uci: string; san: string; ply: number; reps: Repertoire[]; fromKey: string }[] = []
   let cur = node
   while (cur.kind === 'move') {
     const [first, ...rest] = cur.moves
     moves.push({ san: first.san, ply: cur.path.length, source: first.source, reps: first.reps, fromKey: cur.key })
-    for (const m of rest) extra.push({ node: m.child, san: m.san, ply: cur.path.length, reps: m.reps })
+    for (const m of rest) extra.push({ node: m.child, uci: m.uci, san: m.san, ply: cur.path.length, reps: m.reps, fromKey: cur.key })
     cur = first.child
   }
   return { moves, extra, end: cur }
@@ -247,11 +247,14 @@ function ChainRow({
   level,
   ctx,
   reply,
+  promote,
 }: {
   node: PlanNode
   level: number
   ctx: Ctx
   reply?: { san: string; ply: number; name?: string; share: number | null }
+  /** For a second answer: makes it your main answer instead. */
+  promote?: () => void
 }) {
   const { moves, extra, end } = chainOf(node)
   const id = end.path.join(',')
@@ -259,7 +262,7 @@ function ChainRow({
   return (
     <li id={`plan-${id}`}>
       <div
-        className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm transition-colors hover:bg-surface-2/50 ${node.counted ? '' : 'opacity-60'}`}
+        className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm transition-colors hover:bg-surface-2/50 ${node.counted ? '' : 'opacity-60 hover:opacity-100'}`}
         style={indent(level)}
       >
         {reply && (
@@ -302,7 +305,20 @@ function ChainRow({
           </button>
         )}
         {end.kind === 'stop' && <span className="text-xs text-muted">deep enough for now</span>}
-        {!node.counted && <span className="text-xs text-muted">(second answer, not counted)</span>}
+        {promote && (
+          <>
+            <span className="text-xs text-muted" title="Kept for specific opponents: it doesn't count towards coverage or the overall score">
+              (side line, not counted)
+            </span>
+            <button
+              className="rounded-full border border-line-strong px-2 text-xs text-muted transition hover:border-maple/60 hover:text-maple"
+              title="Play this move by default and keep the current answer as a side line"
+              onClick={promote}
+            >
+              make main
+            </button>
+          </>
+        )}
       </div>
       {(extra.length > 0 || end.kind === 'replies' || decisionOpen) && (
         <ul>
@@ -313,6 +329,7 @@ function ChainRow({
               level={level + 1}
               ctx={ctx}
               reply={{ san: x.san, ply: x.ply, name: `also in ${x.reps.map((r) => r.name).join(', ')}`, share: null }}
+              promote={() => setPlanChoice(ctx.color, x.fromKey, x.uci)}
             />
           ))}
           {end.kind === 'replies' && <RepliesItems node={end} level={level + 1} ctx={ctx} />}
