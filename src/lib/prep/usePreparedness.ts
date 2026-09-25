@@ -1,10 +1,7 @@
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useMemo, useState } from 'react'
-import { db } from '../../db/schema'
+import { useMemo } from 'react'
 import type { RepertoireData } from '../../db/useRepertoire'
 import { isMyTurn, myMove } from '../chess/graph'
-import { keyToFen } from '../chess/position'
-import { AuthRequiredError, explorer, filterHash, totalGames, type ExplorerData, type ExplorerFilter } from '../explorer'
+import { totalGames, useExplorerData, type ExplorerFilter } from '../explorer'
 import { retrievability } from '../srs/scheduler'
 import { findGaps, positionsNeedingData, preparedness, type Gap, type PrepInputs, type PrepResult } from './preparedness'
 
@@ -37,43 +34,9 @@ export function usePreparedness(
   depth: number,
 ): PrepState | undefined {
   const graph = data?.graph
-  const hash = filter ? filterHash(filter) : ''
   const needed = useMemo(() => (graph ? positionsNeedingData(graph, depth) : []), [graph, depth])
 
-  const cached = useLiveQuery(
-    async () => {
-      const rows = await db.explorerCache.bulkGet(needed.map((k) => `${hash}|${k}`))
-      const map = new Map<string, ExplorerData>()
-      rows.forEach((r, i) => r && map.set(needed[i], r.data as ExplorerData))
-      return map
-    },
-    [needed, hash],
-  )
-
-  const [fetchError, setFetchError] = useState<Error>()
-  useEffect(() => {
-    if (!filter || !cached) return
-    const missing = needed.filter((k) => !cached.has(k))
-    if (!missing.length) return
-    let cancelled = false
-    ;(async () => {
-      for (const key of missing) {
-        if (cancelled) return
-        try {
-          await explorer.get(keyToFen(key), filter)
-          setFetchError(undefined)
-        } catch (e) {
-          setFetchError(e as Error)
-          if (e instanceof AuthRequiredError) return
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-    // Re-run only when the set of needed positions or the filter changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needed, hash, cached === undefined])
+  const { cached, pending, fetchError } = useExplorerData(needed, filter)
 
   return useMemo(() => {
     if (!data || !cached) return undefined
@@ -99,7 +62,6 @@ export function usePreparedness(
     }
     branches.sort((a, b) => (b.share ?? 0) - (a.share ?? 0))
 
-    const pending = needed.filter((k) => !cached.has(k)).length
     return { result, gaps, branches, pending, fetchError }
-  }, [data, cached, depth, needed, fetchError])
+  }, [data, cached, depth, pending, fetchError])
 }

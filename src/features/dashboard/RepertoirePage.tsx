@@ -12,7 +12,7 @@ import { repStart } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
 import type { Gap } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
-import { builderUrl } from '../../lib/routes'
+import { builderUrl, planUrl } from '../../lib/routes'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 
 const GAP_LABEL: Record<Gap['kind'], string> = {
@@ -38,6 +38,9 @@ export function RepertoirePage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Link to={planUrl(rep.color)} className="-mb-2 text-xs text-muted hover:text-ink">
+        ← {rep.color === 'white' ? 'White' : 'Black'} repertoire plan
+      </Link>
       <div className="flex flex-wrap items-center gap-3">
         <ColorDot color={rep.color} />
         <h1

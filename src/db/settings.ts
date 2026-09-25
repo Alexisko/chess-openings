@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import type { Color } from '../lib/chess/position'
 import { DEFAULT_FILTER, type ExplorerFilter } from '../lib/explorer/explorer'
 import { db, type AppDB } from './schema'
 
@@ -15,6 +16,11 @@ export interface Settings {
   blunderThreshold: number
   /** Which game import rules the stored games were fetched with (see lib/games/import). */
   gamesImportVersion?: number
+  /**
+   * Repertoire plan choices that aren't a repertoire themselves, e.g. "as
+   * White I play 1.e4": your move (UCI) per position key.
+   */
+  planChoices: Record<Color, Record<string, string>>
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   prepDepth: 6,
   newPerDay: 10,
   blunderThreshold: 50,
+  planChoices: { white: {}, black: {} },
 }
 
 export async function getSettings(d: AppDB = db): Promise<Settings> {
@@ -39,4 +46,13 @@ export async function setSetting<K extends keyof Settings>(key: K, value: Settin
 
 export function useSettings(): Settings | undefined {
   return useLiveQuery(() => getSettings(), [])
+}
+
+/** Records (or with no move, forgets) your move at a position of the repertoire plan. */
+export async function setPlanChoice(color: Color, key: string, uci: string | undefined, d: AppDB = db) {
+  const { planChoices } = await getSettings(d)
+  const mine = { ...planChoices[color] }
+  if (uci) mine[key] = uci
+  else delete mine[key]
+  await setSetting('planChoices', { ...planChoices, [color]: mine }, d)
 }
