@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Board } from '../../components/Board'
 import { MoveTree } from '../../components/MoveTree'
+import { OpeningTrail } from '../../components/OpeningTrail'
 import { FirstIcon, LastIcon, NextIcon, PrevIcon } from '../../components/icons'
 import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
 import {
@@ -20,7 +21,8 @@ import { myMove, pathTo } from '../../lib/chess/graph'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
-import { moveShare, useCachedExplorer, useExplorer } from '../../lib/explorer'
+import { moveShare, useCachedExplorer, useExplorer, useOpeningNames } from '../../lib/explorer'
+import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
@@ -83,6 +85,7 @@ export function BuilderPage() {
 
   const fens = useMemo(() => [START_FEN, ...played.map((p) => p.fen)], [played])
   const fen = fens[cursor]
+  const pathKeys = useMemo(() => fens.map(positionKey), [fens])
   const key = positionKey(fen)
   const graph = data?.graph
   const color = data?.rep.color ?? 'white'
@@ -105,13 +108,15 @@ export function BuilderPage() {
   const treeRoot = focus.length ? focus : start.moves
   const rawTree = useMemo(() => (graph ? buildTree(graph, treeRoot, path) : null), [graph, treeRoot, path])
   const branchKeys = useMemo(() => (rawTree ? opponentBranchKeys(rawTree) : []), [rawTree])
-  const focusKey = positionKey(fens[focus.length])
-  const cached = useCachedExplorer([focusKey, ...branchKeys], settings?.explorerFilter)
+  const cached = useCachedExplorer(branchKeys, settings?.explorerFilter)
   const shareOf = useCallback(
     (parent: TreeNode, child: TreeNode) => moveShare(cached.get(parent.key), child.uci),
     [cached],
   )
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
+  // Opening names along the line (cached explorer data; the current position is fetched above).
+  const openings = useOpeningNames(pathKeys, settings?.explorerFilter)
+  const trail = useMemo(() => openingTrail(openings, cursor), [openings, cursor])
 
   const goTo = useCallback(
     (uci: string[], newFocus: string[] = focus) => {
@@ -210,8 +215,7 @@ export function BuilderPage() {
   const lastSquares = last ? (moveSquares(fens[cursor - 1], last.uci) ?? undefined) : undefined
   const arrows = mine ? [{ ...squaresOf(fen, mine.uci), brush: 'green' as const }] : []
   const focusSans = played.slice(0, focus.length).map((p) => p.san)
-  const focusName = cached.get(focusKey)?.opening?.name
-  const openingHere = explorerState.data?.opening?.name
+  const focusName = focus.length ? openingTrail(openings, focus.length).at(-1)?.opening.name : undefined
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -224,13 +228,13 @@ export function BuilderPage() {
           <Link to={`/rep/${rep.id}/tree`} className="chip shrink-0 py-0.5">
             Overview
           </Link>
-          <span
-            className={`ml-auto flex shrink-0 items-center gap-1.5 text-xs ${myTurn ? 'text-maple' : 'text-muted'}`}
-            title={openingHere}
-          >
+          <span className={`ml-auto flex shrink-0 items-center gap-1.5 text-xs ${myTurn ? 'text-maple' : 'text-muted'}`}>
             <span className={`h-2 w-2 rounded-full ${myTurn ? 'bg-maple' : 'bg-faint'}`} />
             {myTurn ? 'Your move' : 'Their move'}
           </span>
+        </div>
+        <div className="-mt-1 flex min-h-6 items-center">
+          <OpeningTrail trail={trail} />
         </div>
         <Board
           fen={fen}
@@ -328,16 +332,7 @@ export function BuilderPage() {
       </div>
 
       <div className="flex flex-col gap-5">
-        <Section
-          title={myTurn ? 'Your move' : 'Opponent replies'}
-          right={
-            openingHere && (
-              <span className="block max-w-[14rem] truncate text-xs text-muted italic" title={openingHere}>
-                {openingHere}
-              </span>
-            )
-          }
-        >
+        <Section title={myTurn ? 'Your move' : 'Opponent replies'}>
           <div className="mb-3 text-sm">
             {myTurn ? (
               mine ? (

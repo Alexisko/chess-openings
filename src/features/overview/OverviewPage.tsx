@@ -2,15 +2,17 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { TargetIcon } from '../../components/icons'
+import { OpeningTrail } from '../../components/OpeningTrail'
 import { ColorDot, Notice } from '../../components/ui'
 import { findOverlaps, previewStartChange, setRepertoireStart } from '../../db/repertoire'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { useSettings } from '../../db/settings'
 import { useRepertoire } from '../../db/useRepertoire'
-import { formatMoves, turnOf } from '../../lib/chess/position'
+import { formatMoves, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
 import { parseMoves, repStart } from '../../lib/chess/start'
 import { allKeys, buildTree, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { AuthRequiredError, moveShare, useCachedExplorer, type ExplorerData } from '../../lib/explorer'
+import { openingTrail, type OpeningName } from '../../lib/openings/names'
 import { preparedness } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl } from '../../lib/routes'
@@ -67,8 +69,13 @@ export function OverviewPage() {
 
   const start = data ? repStart(data.rep) : undefined
   const rawTree = useMemo(() => (data && start ? buildTree(data.graph, start.moves) : null), [data, start])
+  // Positions up to the start give the name the lines begin with.
+  const startKeys = useMemo(
+    () => (start ? [positionKey(START_FEN), ...replay(start.moves).map((p) => positionKey(p.fen))] : []),
+    [start],
+  )
   // All positions: opponent branch points give frequencies, any position may give an opening name.
-  const keys = useMemo(() => (rawTree ? allKeys(rawTree) : []), [rawTree])
+  const keys = useMemo(() => (rawTree ? [...startKeys, ...allKeys(rawTree)] : []), [rawTree, startKeys])
   const explorer = useCachedExplorer(keys, settings?.explorerFilter)
   const tree = useMemo(
     () => (rawTree ? orderTree(rawTree, (p, c) => moveShare(explorer.get(p.key), c.uci)) : null),
@@ -87,6 +94,11 @@ export function OverviewPage() {
     for (const [k, c] of data?.cardMap ?? []) map.set(k, retrievability(c, now))
     return map
   }, [data])
+
+  const startName = useMemo(
+    () => openingTrail(startKeys.map((k) => explorer.get(k)?.opening)).at(-1)?.opening,
+    [startKeys, explorer],
+  )
 
   const [toggled, setToggled] = useState<Set<string>>(new Set())
   const [startMsg, setStartMsg] = useState<string>()
@@ -204,7 +216,8 @@ export function OverviewPage() {
     )
   }
 
-  const renderRow = (row: Row, level: number): ReactNode => {
+  /** `before`: the opening name of the position the row starts from. */
+  const renderRow = (row: Row, level: number, before: OpeningName | undefined): ReactNode => {
     const rowId = row.first.path.join(',')
     const hasKids = row.children.length > 0 || row.unprepared.length > 0
     const defaultOpen = level < 2
@@ -213,7 +226,9 @@ export function OverviewPage() {
     const p = rowPrep(row)
     const own = ownMovesUpTo(row.last)
     const endsEarly = !row.last.children.length && !row.last.transposition && own < depth
-    const name = explorer.get(row.last.key)?.opening?.name ?? explorer.get(row.first.key)?.opening?.name
+    // Names that start within this row, after the one it inherits.
+    const trail = openingTrail([before, ...row.nodes.map((n) => explorer.get(n.key)?.opening)])
+    const named = trail.length > 0 && trail.at(-1)!.ply > 0
     return (
       <li key={rowId}>
         <div
@@ -243,7 +258,7 @@ export function OverviewPage() {
                 )}
                 {row.last.transposition && <span className="text-muted"> ↪ transposes</span>}
               </Link>
-              {(endsEarly || name) && (
+              {(endsEarly || named) && (
                 <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                   {endsEarly && (
                     <span
@@ -253,7 +268,7 @@ export function OverviewPage() {
                       ends {own}/{depth} deep
                     </span>
                   )}
-                  {name && <span className="truncate text-muted italic">{name}</span>}
+                  {named && <OpeningTrail trail={trail} compact />}
                 </div>
               )}
             </div>
@@ -273,7 +288,7 @@ export function OverviewPage() {
         {open && (
           <ul>
             {row.unprepared.map((u) => renderUnprepared(u, level + 1))}
-            {row.children.map((c) => renderRow(c, level + 1))}
+            {row.children.map((c) => renderRow(c, level + 1, trail.at(-1)?.opening))}
           </ul>
         )}
       </li>
@@ -298,6 +313,7 @@ export function OverviewPage() {
         {start && start.moves.length > 0 && (
           <span className="rounded-md bg-surface-2 px-2 py-0.5 font-display text-sm text-muted">{formatMoves(start.sans)}</span>
         )}
+        {startName && <span className="text-sm text-muted italic">{startName.name}</span>}
         <button
           className="text-xs text-muted underline decoration-line-strong underline-offset-2 hover:text-ink"
           onClick={changeStart}
@@ -339,7 +355,7 @@ export function OverviewPage() {
         {rows.length ? (
           <ul>
             {rootUnprepared.map((u) => renderUnprepared(u, 0))}
-            {rows.map((r) => renderRow(r, 0))}
+            {rows.map((r) => renderRow(r, 0, startName))}
           </ul>
         ) : (
           <p className="p-2 text-sm text-muted">This repertoire is empty. Add lines in the builder.</p>
