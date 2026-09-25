@@ -175,7 +175,7 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
       {reps.length > 0 && (
         <ul className="mt-4 flex flex-col gap-2">
           {reps.map((r) => (
-            <RepertoireRow key={r.id} rep={r} settings={settings} onScore={report} />
+            <RepertoireRow key={r.id} rep={r} settings={settings} onScore={report} side={!!plan?.sideLines.some((s) => s.id === r.id)} />
           ))}
         </ul>
       )}
@@ -187,10 +187,13 @@ function RepertoireRow({
   rep,
   settings,
   onScore,
+  side,
 }: {
   rep: Repertoire
   settings: Settings
   onScore: (repId: string, score: number) => void
+  /** Reached only through a second answer (see the plan). */
+  side: boolean
 }) {
   const data = useRepertoire(rep.id)
   const prep = usePreparedness(data, settings.explorerFilter, settings.prepDepth)
@@ -208,7 +211,17 @@ function RepertoireRow({
         title={`Prepared ${settings.prepDepth} moves deep`}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-[16px] font-medium">{rep.name}</div>
+          <div className="flex items-baseline gap-2">
+            <span className="truncate font-display text-[16px] font-medium">{rep.name}</span>
+            {side && (
+              <span
+                className="shrink-0 rounded-full border border-line-strong px-1.5 text-[10px] text-muted"
+                title="Not your main answer: it doesn't count towards coverage"
+              >
+                side line
+              </span>
+            )}
+          </div>
           <div className="mt-0.5 truncate text-xs text-muted">
             {repStart(rep).moves.length > 0 && <>{formatMoves(repStart(rep).sans)} · </>}
             {data?.lines.length ?? 0} lines · {data?.cards.length ?? 0} moves
