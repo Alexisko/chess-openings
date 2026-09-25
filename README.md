@@ -39,14 +39,39 @@ are against the moves real opponents play.
 ## Stack
 
 Vite + React + TypeScript, Tailwind, `@lichess-org/chessground` + `chessops`, Stockfish 19 lite (WASM, single
-thread), Dexie (IndexedDB), `ts-fsrs`. It is a PWA with no backend: all data stays in the browser.
-Use **Settings → Backup** to move it between devices.
+thread), Dexie (IndexedDB), `ts-fsrs`. It is a PWA: data lives in the browser (IndexedDB) and is synced
+between devices by a small Cloudflare Worker (see [Sync](#sync)). **Settings → Backup** exports or restores a
+snapshot file.
 
 Pushing to `main` deploys the static files to GitHub Pages (`.github/workflows/deploy.yml`). On a phone,
 open the Pages URL and use "Add to Home Screen" to install it.
 
 The Lichess opening explorer requires authentication. The app uses "Log in with Lichess" (OAuth PKCE with no
 scopes), or you can paste a personal token with no scopes.
+
+## Sync
+
+Each user's data is kept under their Lichess username, which the app takes from the Lichess login and doesn't
+verify: this is meant for a handful of friends, and anyone who knows a username can read or overwrite its data.
+Games aren't synced; each device imports them again.
+
+- `worker/` is the server: one Durable Object per user holding one gzipped JSON document (the backup format)
+  and a version number. An upload only succeeds if it was based on the current version.
+- `src/lib/sync/` merges on the device: a three-way merge against the copy both sides last agreed on
+  (remembered as one fingerprint per record), so a record added on one side is told apart from one deleted on
+  the other. When both sides changed a record, the most recent edit wins. `repairAfterMerge` then removes
+  duplicates and conflicting moves that edits on two devices can create.
+- It syncs when the app opens or comes back to the foreground, every 5 minutes while open, and 5 seconds
+  after a change.
+
+Deploy the Worker (after `npx wrangler login` once):
+
+```sh
+cd worker && npm install && npx wrangler deploy
+```
+
+It runs on the Workers free plan. To develop against a local Worker, run `npm run dev` in `worker/` and start
+the app with `VITE_SYNC_URL=http://localhost:8787`.
 
 ## Develop
 
@@ -60,7 +85,7 @@ npm run build
 ## Layout
 
 ```
-src/db/          Dexie schema, repertoire operations, reviews, settings, backup
+src/db/          Dexie schema, repertoire operations, reviews, settings, backup, sync bookkeeping
 src/lib/chess/   position keys, repertoire graph (lines, transpositions), PGN
 src/lib/explorer Lichess explorer client (cache + throttled queue)
 src/lib/engine/  Stockfish worker, cloud eval, UCI parsing
@@ -69,7 +94,9 @@ src/lib/prep/    preparedness score and gap finder
 src/lib/openings curated catalogue of openings for the repertoire plan
 src/lib/plan/    repertoire plan per colour (which repertoire answers each reply, what is left to choose)
 src/lib/games/   game import (Lichess, Chess.com), comparison with the repertoire, engine checks
+src/lib/sync/    sync with the server: three-way merge, background scheduling
 src/features/    pages: dashboard, plan, builder, train, games, settings
+worker/          Cloudflare Worker storing each user's synced copy
 ```
 
 GPL-3.0 dependencies (chessground, chessops, Stockfish) mean that a distributed version of the app must

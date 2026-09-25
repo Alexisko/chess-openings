@@ -6,6 +6,7 @@ import { db } from '../../db/schema'
 import { setSetting, useSettings, type Settings } from '../../db/settings'
 import { logout, saveToken, startLogin } from '../../lib/auth/lichess'
 import { ALL_SPEEDS, RATING_BUCKETS, type ExplorerFilter } from '../../lib/explorer'
+import { syncNow, useSyncStatus } from '../../lib/sync/auto'
 
 export function SettingsPage() {
   const settings = useSettings()
@@ -14,6 +15,7 @@ export function SettingsPage() {
     <div className="stagger mx-auto flex max-w-2xl flex-col gap-5">
       <h1 className="page-title">Settings</h1>
       <LichessAccount settings={settings} />
+      <SyncSettings loggedIn={!!settings.lichessUser} />
       <ExplorerSettings filter={settings.explorerFilter} />
       <TrainingSettings settings={settings} />
       <Backup />
@@ -87,6 +89,77 @@ function LichessAccount({ settings }: { settings: Settings }) {
         />
       </label>
       <p className="mt-1 text-xs text-muted">Your games are imported on the Games page to find where you left your preparation.</p>
+    </Section>
+  )
+}
+
+function syncedAt(ms: number) {
+  const d = new Date(ms)
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString()} ${time}`
+}
+
+function SyncSettings({ loggedIn }: { loggedIn: boolean }) {
+  const status = useSyncStatus()
+  const replace = async () => {
+    const ok = await confirmDialog({
+      title: 'Use the synced copy?',
+      message: `The repertoires and review history on this device are replaced by ${status.user}'s synced copy.`,
+      confirmLabel: 'Replace this device’s data',
+      danger: true,
+    })
+    if (ok) await syncNow('replace')
+  }
+  return (
+    <Section title="Sync between devices">
+      {!loggedIn ? (
+        <p className="text-sm text-muted">Log in with Lichess to keep your repertoires in sync on all your devices.</p>
+      ) : (
+        <div className="flex flex-col gap-3 text-sm">
+          {status.state === 'needs-choice' ? (
+            <div className="rounded-lg border border-warn/40 bg-warn/10 p-3">
+              <p className="mb-3">
+                {status.previousUser
+                  ? `This device last synced as ${status.previousUser}, and ${status.user} has a synced copy too.`
+                  : `This device has repertoires, and so does ${status.user}'s synced copy.`}{' '}
+                How should they be combined?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button className="btn-primary" onClick={() => syncNow('merge')}>
+                  Keep both
+                </button>
+                <button className="btn-ghost" onClick={replace}>
+                  Use the synced copy only
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  status.state === 'error' ? 'bg-bad' : status.state === 'syncing' ? 'animate-pulse bg-brass' : 'bg-accent'
+                }`}
+              />
+              <span className="min-w-0 flex-1">
+                {status.state === 'syncing'
+                  ? 'Syncing…'
+                  : status.state === 'error'
+                    ? `Couldn't sync: ${status.error}`
+                    : status.lastSyncedAt
+                      ? `Synced as ${status.user} at ${syncedAt(status.lastSyncedAt)}`
+                      : 'Not synced yet'}
+              </span>
+              <button className="btn-ghost" disabled={status.state === 'syncing'} onClick={() => syncNow()}>
+                Sync now
+              </button>
+            </div>
+          )}
+          <p className="text-xs leading-relaxed text-muted">
+            Repertoires, notes, training history and settings are saved under your Lichess username, so anyone who
+            knows it can read them. Games are imported again on each device.
+          </p>
+        </div>
+      )}
     </Section>
   )
 }
@@ -229,8 +302,8 @@ function Backup() {
   return (
     <Section title="Backup & transfer">
       <p className="mb-3 text-xs text-muted">
-        Your data lives in this browser. Export a backup to keep it safe or to move it to another device (e.g. your
-        phone).
+        Export a snapshot of your data to keep, or restore one. Restoring replaces your data everywhere it is
+        synced.
       </p>
       <div className="flex flex-wrap gap-2">
         <button className="btn-ghost" onClick={download}>
@@ -259,7 +332,8 @@ function Backup() {
             if (!file) return
             const ok = await confirmDialog({
               title: 'Import this backup?',
-              message: 'It replaces all repertoires and review history on this device. Export a backup first if you want to keep them.',
+              message:
+                'It replaces all repertoires and review history on this device and in your synced copy. Export a backup first if you want to keep them.',
               confirmLabel: 'Replace my data',
               danger: true,
             })

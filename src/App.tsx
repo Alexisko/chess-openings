@@ -12,6 +12,7 @@ import { TrainPage } from './features/train/TrainPage'
 import { DialogHost } from './components/DialogHost'
 import { GamesIcon, HomeIcon, MoonIcon, SettingsIcon, SunIcon, TrainIcon } from './components/icons'
 import { completeLoginIfCallback } from './lib/auth/lichess'
+import { startAutoSync, useSyncStatus } from './lib/sync/auto'
 import { useTheme } from './lib/theme'
 
 const NAV = [
@@ -26,6 +27,9 @@ export default function App() {
   const settings = useSettings()
   const [loginError, setLoginError] = useState<string>()
   const [theme, toggleTheme] = useTheme()
+  const sync = useSyncStatus()
+
+  useEffect(() => startAutoSync(), [])
 
   useEffect(() => {
     let done = false
@@ -75,9 +79,27 @@ export default function App() {
             className={`ml-auto flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs md:ml-2 ${
               settings?.lichessUser ? 'border-line text-muted hover:text-ink' : 'border-warn/40 text-warn hover:bg-warn/10'
             }`}
-            title={settings?.lichessUser ? 'Connected to Lichess' : 'Log in with Lichess in Settings'}
+            title={
+              !settings?.lichessUser
+                ? 'Log in with Lichess in Settings'
+                : sync.state === 'error'
+                  ? `Couldn't sync: ${sync.error}`
+                  : sync.state === 'needs-choice'
+                    ? 'Choose how to sync in Settings'
+                    : 'Connected to Lichess and synced'
+            }
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${settings?.lichessUser ? 'bg-accent' : 'bg-warn'}`} />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                !settings?.lichessUser || sync.state === 'needs-choice'
+                  ? 'bg-warn'
+                  : sync.state === 'error'
+                    ? 'bg-bad'
+                    : sync.state === 'syncing'
+                      ? 'animate-pulse bg-brass'
+                      : 'bg-accent'
+              }`}
+            />
             {settings?.lichessUser ?? 'Not connected'}
           </NavLink>
           <button

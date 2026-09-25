@@ -117,6 +117,12 @@ export interface Setting {
   value: unknown
 }
 
+/** Bookkeeping of the sync with the server (see lib/sync). */
+export interface SyncStateEntry {
+  key: string
+  value: unknown
+}
+
 export class AppDB extends Dexie {
   repertoires!: EntityTable<Repertoire, 'id'>
   positions!: EntityTable<PositionNote, 'key'>
@@ -127,6 +133,7 @@ export class AppDB extends Dexie {
   evalCache!: EntityTable<EvalCacheEntry, 'positionKey'>
   settings!: EntityTable<Setting, 'key'>
   games!: EntityTable<Game, 'id'>
+  syncState!: EntityTable<SyncStateEntry, 'key'>
 
   constructor(name = 'opening-trainer') {
     super(name)
@@ -141,6 +148,7 @@ export class AppDB extends Dexie {
       settings: 'key',
     })
     this.version(2).stores({ games: 'id, source, playedAt' })
+    this.version(3).stores({ syncState: 'key' })
   }
 }
 
