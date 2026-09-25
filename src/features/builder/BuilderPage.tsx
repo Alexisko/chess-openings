@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { Board } from '../../components/Board'
+import { Board, type Arrow } from '../../components/Board'
 import { MoveTree } from '../../components/MoveTree'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import { FirstIcon, LastIcon, NextIcon, PrevIcon } from '../../components/icons'
@@ -27,6 +27,7 @@ import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } fro
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
+import { MoveInsight } from '../board/MoveInsight'
 import { builderUrl } from '../../lib/routes'
 import { confirmDialog } from '../../lib/dialog'
 
@@ -93,6 +94,8 @@ export function BuilderPage() {
   const [engineOn, setEngineOn] = useState(readEngineToggle)
   const [panelDb, setPanelDb] = useState(readExplorerDb)
   const [status, setStatus] = useState<string>()
+  // The threat being hovered, drawn on the board for the position it belongs to.
+  const [threatArrow, setThreatArrow] = useState<{ fen: string; arrow: Arrow }>()
 
   const fens = useMemo(() => [START_FEN, ...played.map((p) => p.fen)], [played])
   const fen = fens[cursor]
@@ -230,7 +233,8 @@ export function BuilderPage() {
 
   const last = cursor > 0 ? played[cursor - 1] : undefined
   const lastSquares = last ? (moveSquares(fens[cursor - 1], last.uci) ?? undefined) : undefined
-  const arrows = mine ? [{ ...squaresOf(fen, mine.uci), brush: 'green' as const }] : []
+  const arrows: Arrow[] = mine ? [{ ...squaresOf(fen, mine.uci), brush: 'green' }] : []
+  if (threatArrow?.fen === fen) arrows.push(threatArrow.arrow)
   const focusSans = played.slice(0, focus.length).map((p) => p.san)
   const focusName = focus.length ? openingTrail(openings, focus.length).at(-1)?.opening.name : undefined
 
@@ -409,6 +413,18 @@ export function BuilderPage() {
             onPick={play}
           />
         </Section>
+
+        {last && (
+          <Section title={`What ${formatMoves([last.san], cursor - 1)} does`}>
+            <MoveInsight
+              key={`${fens[cursor - 1]}|${last.uci}`}
+              fen={fens[cursor - 1]}
+              uci={last.uci}
+              engine={engineOn}
+              onArrow={(arrow) => setThreatArrow(arrow ? { fen, arrow } : undefined)}
+            />
+          </Section>
+        )}
 
         <Section
           title="Engine"

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import { BookIcon, CheckIcon, CrossIcon, EyeIcon, SkipIcon, TargetIcon, TrainIcon } from '../../components/icons'
-import { ColorDot, ScoreRing } from '../../components/ui'
+import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
 import { recordAttempt, learnedToday } from '../../db/reviews'
 import { db, type Repertoire, type ReviewMode } from '../../db/schema'
 import { getSettings, useSettings } from '../../db/settings'
@@ -14,6 +14,7 @@ import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../.
 import { openingTrail } from '../../lib/openings/names'
 import { planDrill, planLearn, planReview, type PlannedRun } from '../../lib/srs/plan'
 import { LineRun } from '../../lib/srs/session'
+import { MoveInsight } from '../board/MoveInsight'
 
 interface QueuedRun {
   rep: Repertoire
@@ -73,6 +74,16 @@ async function lineWeights(lines: Line[], hash: string): Promise<(l: Line) => nu
 interface Feedback {
   kind: 'correct' | 'wrong' | 'info'
   text: string
+  /** The move just played correctly, to explain. */
+  move?: { fen: string; uci: string; label: string }
+}
+
+function readExplain() {
+  try {
+    return localStorage.getItem('explainMoves') === 'on'
+  } catch {
+    return false
+  }
 }
 
 export function TrainPage() {
@@ -144,6 +155,9 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const rerender = useCallback(() => setTick((n) => n + 1), [])
   const [boardVersion, setBoardVersion] = useState(0)
   const [stats, setStats] = useState({ correct: 0, wrong: 0, mistakes: [] as string[] })
+  const [explain, setExplain] = useState(readExplain)
+  // The feedback whose explanation was dismissed.
+  const [continued, setContinued] = useState(0)
 
   const current = queue[index] as QueuedRun | undefined
   const run = useMemo(
@@ -191,9 +205,14 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
     }
   }, [mode, pass])
 
+  const fbId = fb && fb.run === run ? fb.id : 0
+  // With explanations on, a correct move pauses the line until you continue. Only
+  // before the reply: after it you're answering again, and the idea could give it away.
+  const explaining = explain && !!feedback?.move && !!run && !run.awaitingUser && continued !== fbId ? feedback.move : undefined
+
   // Auto-play the opponent's and the mastered moves, and advance when the run is finished.
   useEffect(() => {
-    if (!run) return
+    if (!run || explaining) return
     if (run.finished) {
       const t = setTimeout(next, 900)
       return () => clearTimeout(t)
@@ -237,10 +256,11 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         setStats((s) => ({ ...s, correct: s.correct + 1 }))
         await recordAttempt(rep.id, res.move.fromKey, true, uci, mode)
       }
+      const move = { fen: res.move.fromFen, uci: res.move.uci, label: formatMoves([res.move.san], start.moves.length + run.ply - 1) }
       setFeedback(
         res.move.comment
-          ? { kind: 'correct', text: `${res.move.san} — ${res.move.comment}` }
-          : { kind: 'correct', text: `${res.move.san} ✓` },
+          ? { kind: 'correct', text: `${res.move.san} — ${res.move.comment}`, move }
+          : { kind: 'correct', text: `${res.move.san} ✓`, move },
       )
     } else {
       const exp = 'expected' in res ? res.expected : undefined
@@ -259,7 +279,6 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   }
 
   const giveUp = () => onMove('0000')
-  const fbId = fb && fb.run === run ? fb.id : 0
   const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
   // The line so far, with the last move picked out.
   const words = lineText(run.ply).split(' ')
@@ -311,6 +330,18 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
           autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
         />
 
+        {explaining && (
+          <div className="card animate-pop px-4 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="eyebrow">What {explaining.label} does</span>
+              <button className="btn-primary ml-auto py-1 text-xs" onClick={() => setContinued(fbId)} autoFocus>
+                Continue
+              </button>
+            </div>
+            <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
+          </div>
+        )}
+
         <div className="card px-4 py-3">
           <div className="eyebrow mb-1.5">Line so far</div>
           <OpeningTrail trail={trail} className="mb-1" />
@@ -350,6 +381,22 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
           <span className="flex items-center gap-1.5">
             <CrossIcon size={14} className="text-bad" />
             <span className="font-semibold text-ink tabular-nums">{stats.wrong}</span> mistake{stats.wrong === 1 ? '' : 's'}
+          </span>
+          <span className="ml-auto" title="Pause after each correct move to show what it threatens and does">
+            <Toggle
+              label="Explain moves"
+              checked={explain}
+              onChange={(on) => {
+                setExplain(on)
+                // Turning it on later shouldn't open an explanation for a move already past.
+                setContinued(fbId)
+                try {
+                  localStorage.setItem('explainMoves', on ? 'on' : 'off')
+                } catch {
+                  // Preference is optional.
+                }
+              }}
+            />
           </span>
         </div>
       </div>
