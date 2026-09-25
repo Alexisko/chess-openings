@@ -13,6 +13,11 @@ export class Stockfish {
   private ready: Promise<void> | null = null
   private generation = 0
   private idle: Promise<void> = Promise.resolve()
+  private readonly hashMb: number
+
+  constructor(opts: { hashMb?: number } = {}) {
+    this.hashMb = opts.hashMb ?? 32
+  }
 
   private boot(): Promise<void> {
     if (this.ready) return this.ready
@@ -26,7 +31,7 @@ export class Stockfish {
       }
       this.worker!.addEventListener('message', onMsg)
       this.worker!.postMessage('uci')
-      this.worker!.postMessage('setoption name Hash value 32')
+      this.worker!.postMessage(`setoption name Hash value ${this.hashMb}`)
       this.worker!.postMessage('isready')
     })
     return this.ready
@@ -86,3 +91,6 @@ export class Stockfish {
 }
 
 export const stockfish = new Stockfish()
+
+/** A second, smaller engine for threat checks, so they never interrupt the main analysis. */
+export const threatEngine = new Stockfish({ hashMb: 16 })

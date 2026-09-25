@@ -23,11 +23,19 @@ are against the moves real opponents play.
   - The opening's name follows you along the line ("Vienna Game → Vienna Gambit"), here, in training and on
     the overview. Names come from explorer data already cached; a position without its own name keeps the one
     before it. Training only names positions already on the board.
+  - "What 3.f4 does" explains the last move. Stockfish plays a free extra move for the side that just moved
+    (the side to move flipped, skipped after a check): if that gains more than a spare tempo, the move
+    threatens it ("Threatens fxe5 +4.4"); otherwise it's shown as the next idea. Hover the move to see it
+    on the board. Facts from the board sit underneath: pieces newly attacked (discovered attacks too), new
+    pins, development, castling and lines opened.
 - **Training (FSRS):**
   - *Learn* plays a new line with hints, then asks you to replay it from memory.
   - *Review* replays lines from the start and covers every due card with as few lines as possible.
   - *Drill* starts two moves before your weakest positions.
   - Any move other than your repertoire move counts as wrong.
+  - *Explain moves* (a switch next to the score, remembered per device) pauses after each correct move to show
+    what it threatens and does, until you continue. It's never shown once you're answering again, where it
+    could give the next move away.
 - **Preparedness @ move N:** the chance of reaching your N-th move while still in preparation you
   remember, when opponents choose moves at the explorer's frequencies. The gap list ranks the biggest
   leaks: replies you haven't prepared, lines that end too early, and moves you haven't learned or recall
