@@ -1,8 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { db } from '../../db/schema'
 import { getToken } from '../auth/lichess'
 import { keyToFen } from '../chess/position'
+import type { OpeningName } from '../openings/names'
 import { AuthRequiredError, ExplorerClient, filterHash, totalGames, type ExplorerData, type ExplorerFilter } from './explorer'
 
 export * from './explorer'
@@ -54,6 +55,15 @@ export function useCachedExplorer(keys: string[], filter: ExplorerFilter | undef
 }
 
 const EMPTY = new Map<string, ExplorerData>()
+
+/**
+ * Opening name of each position along a line, from the explorer cache (never
+ * fetches): null past the last named position, undefined when not cached.
+ */
+export function useOpeningNames(keys: string[], filter: ExplorerFilter | undefined): (OpeningName | null | undefined)[] {
+  const cached = useCachedExplorer(keys, filter)
+  return useMemo(() => keys.map((k) => cached.get(k)?.opening), [keys, cached])
+}
 
 export interface ExplorerDataState {
   /** Cached data per position key (undefined while the cache is read). */

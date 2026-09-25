@@ -18,6 +18,9 @@ are against the moves real opponents play.
   - The engine warns when a repertoire move is clearly worse than its best move.
   - Transpositions are detected and cut.
   - Every position can have notes on its ideas and plans.
+  - The opening's name follows you along the line ("Vienna Game → Vienna Gambit"), here, in training and on
+    the overview. Names come from explorer data already cached; a position without its own name keeps the one
+    before it. Training only names positions already on the board.
 - **Training (FSRS):**
   - *Learn* plays a new line with hints, then asks you to replay it from memory.
   - *Review* replays lines from the start and covers every due card with as few lines as possible.

@@ -43,14 +43,6 @@ export function ExplorerPanel({ state, repMoves, myTurn, evaluation, onPick }: P
 
   return (
     <div className={loading ? 'opacity-60' : ''}>
-      {data.opening && (
-        <div className="mb-3 flex items-baseline gap-2">
-          <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-brass">
-            {data.opening.eco}
-          </span>
-          <span className="font-display text-[15px] italic">{data.opening.name}</span>
-        </div>
-      )}
       {!myTurn && (
         <div className="mb-3 flex items-center gap-2 text-xs text-muted">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">

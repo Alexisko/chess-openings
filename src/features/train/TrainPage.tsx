@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
+import { OpeningTrail } from '../../components/OpeningTrail'
 import { BookIcon, CheckIcon, CrossIcon, EyeIcon, SkipIcon, TargetIcon, TrainIcon } from '../../components/icons'
 import { ColorDot, ScoreRing } from '../../components/ui'
 import { recordAttempt, learnedToday } from '../../db/reviews'
 import { db, type Repertoire, type ReviewMode } from '../../db/schema'
-import { getSettings } from '../../db/settings'
+import { getSettings, useSettings } from '../../db/settings'
 import { buildGraph, enumerateLines, type Line } from '../../lib/chess/graph'
 import { repStart } from '../../lib/chess/start'
-import { formatMoves, moveSquares, playUci } from '../../lib/chess/position'
-import { filterHash, totalGames, type ExplorerData } from '../../lib/explorer'
+import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN } from '../../lib/chess/position'
+import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../../lib/explorer'
+import { openingTrail } from '../../lib/openings/names'
 import { planDrill, planLearn, planReview, type PlannedRun } from '../../lib/srs/plan'
 import { LineRun } from '../../lib/srs/session'
 
@@ -166,6 +168,20 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
     const last = moves[moves.length - 1]
     return [...moves.map((m) => m.fromFen), playUci(last.fromFen, last.uci)!.fen]
   }, [current])
+  // Every position from the initial one: the repertoire's setup moves, then the line.
+  const settings = useSettings()
+  const keys = useMemo(
+    () =>
+      current
+        ? [
+            positionKey(START_FEN),
+            ...replay(repStart(current.rep).moves).map((p) => positionKey(p.fen)),
+            ...current.run.line.moves.map((m) => m.toKey),
+          ]
+        : [],
+    [current],
+  )
+  const openings = useOpeningNames(keys, settings?.explorerFilter)
 
   const next = useCallback(() => {
     if (mode === 'learn' && pass === 'demo') setPass('recall')
@@ -204,6 +220,8 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const start = repStart(rep)
   const lineText = (ply: number) => formatMoves([...start.sans, ...line.moves.slice(0, ply).map((m) => m.san)])
   const fen = fens[run.ply]
+  // Names of positions already on the board only: never the one your pending move reaches.
+  const trail = openingTrail(openings, start.moves.length + run.ply)
   const prev = run.ply > 0 ? line.moves[run.ply - 1] : undefined
   const lastMove = prev ? (moveSquares(prev.fromFen, prev.uci) ?? undefined) : undefined
   const expected = run.expected
@@ -295,6 +313,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
 
         <div className="card px-4 py-3">
           <div className="eyebrow mb-1.5">Line so far</div>
+          <OpeningTrail trail={trail} className="mb-1" />
           <p className="font-display text-[17px] leading-relaxed">
             {words.join(' ')}
             {lastWord && (
