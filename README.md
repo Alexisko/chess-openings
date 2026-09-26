@@ -59,6 +59,11 @@ snapshot file.
 Pushing to `main` deploys the static files to GitHub Pages (`.github/workflows/deploy.yml`). On a phone,
 open the Pages URL and use "Add to Home Screen" to install it.
 
+Sounds (`public/sound/`) come from [Lichess](https://github.com/lichess-org/lila/tree/master/public/sound):
+`move`, `capture` and `wrong` are its standard `Move`, `Capture` and `OutOfBound`; `line-complete` and
+`session-complete` are `PuzzleStormGood` and `PracticeComplete` from the lisp set by EdinburghCollective
+([CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)).
+
 The Lichess opening explorer requires authentication. The app uses "Log in with Lichess" (OAuth PKCE with no
 scopes), or you can paste a personal token with no scopes.
 

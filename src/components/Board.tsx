@@ -3,7 +3,8 @@ import type { Api } from '@lichess-org/chessground/api'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { useEffect, useRef } from 'react'
-import { isCheck, legalDests, setupPosition, turnOf, type Color } from '../lib/chess/position'
+import { isCheck, legalDests, moveBetween, setupPosition, turnOf, type Color } from '../lib/chess/position'
+import { playSound } from '../lib/sound'
 
 export interface Arrow {
   from: string
@@ -51,6 +52,15 @@ export function Board({ fen, orientation, movable = 'both', lastMove, arrows, on
     })
     return () => api.current?.destroy()
   }, [])
+
+  // A move sound whenever the position goes on by one move: played, replied or stepped through.
+  const prevFen = useRef<string>(undefined)
+  useEffect(() => {
+    const prev = prevFen.current
+    prevFen.current = fen
+    const step = prev && prev !== fen ? moveBetween(prev, fen) : null
+    if (step) playSound(step.capture ? 'capture' : 'move')
+  }, [fen])
 
   useEffect(() => {
     const turn = turnOf(fen)

@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App.tsx'
 import './index.css'
+import { initSound } from './lib/sound'
+
+initSound()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

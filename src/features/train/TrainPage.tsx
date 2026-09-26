@@ -28,6 +28,7 @@ import { openingTrail } from '../../lib/openings/names'
 import { builderUrl } from '../../lib/routes'
 import { planDrill, planLearn, planReview, type PlannedRun } from '../../lib/srs/plan'
 import { LineRun } from '../../lib/srs/session'
+import { playSound } from '../../lib/sound'
 import { MoveInsight } from '../board/MoveInsight'
 
 interface QueuedRun {
@@ -285,6 +286,16 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
     }
   })
 
+  // A chime when a line is done, except after watching a demo, and on the last line,
+  // where the end of the session has its own sound.
+  const finished = !!run?.finished
+  const lastLine = index === queue.length - 1
+  useEffect(() => {
+    if (!finished || run?.demo || lastLine) return
+    const t = setTimeout(() => playSound('line-complete'), 250)
+    return () => clearTimeout(t)
+  }, [run, finished, lastLine])
+
   if (!current || !run) return <Summary mode={mode} stats={stats} total={queue.length} />
 
   const { rep } = current
@@ -322,6 +333,8 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         }))
         await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
       }
+      // Not for "Show move", which is asked for.
+      if (uci !== '0000') playSound('wrong')
       setFeedback({ kind: 'wrong', text: `Not your repertoire move. Play ${exp?.san}.` })
       setBoardVersion((v) => v + 1)
     }
@@ -554,6 +567,12 @@ function FeedbackCard({
 function Summary({ mode, stats, total }: { mode: TrainMode; stats: { correct: number; wrong: number; mistakes: string[] }; total: number }) {
   const attempts = stats.correct + stats.wrong
   const accuracy = attempts ? stats.correct / attempts : null
+  // Not when the session was ended before playing anything. The timeout skips StrictMode's double run.
+  useEffect(() => {
+    if (!attempts) return
+    const t = setTimeout(() => playSound('session-complete'))
+    return () => clearTimeout(t)
+  }, [attempts])
   return (
     <div className="card mx-auto mt-6 max-w-md animate-rise p-6 md:p-8">
       <div className="flex items-center gap-5">

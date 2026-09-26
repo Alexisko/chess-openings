@@ -95,6 +95,29 @@ export function moveSquares(fen: string, uci: string): [string, string] | null {
   return [makeSquare(move.from), makeSquare(move.to)]
 }
 
+const PROMOTIONS = ['queen', 'knight', 'rook', 'bishop'] as const
+
+/**
+ * Whether one position follows another by a single legal move, and whether
+ * that move captures; null when they aren't one move apart.
+ */
+export function moveBetween(fromFen: string, toFen: string): { capture: boolean } | null {
+  const pos = setupPosition(fromFen)
+  const target = positionKey(toFen)
+  for (const [from, dests] of pos.allDests()) {
+    const pawn = pos.board.get(from)?.role === 'pawn'
+    for (const to of dests) {
+      const lastRank = to >> 3 === 0 || to >> 3 === 7
+      for (const promotion of pawn && lastRank ? PROMOTIONS : [undefined]) {
+        const next = pos.clone()
+        next.play({ from, to, promotion })
+        if (keyOf(next) === target) return { capture: next.board.occupied.size() < pos.board.occupied.size() }
+      }
+    }
+  }
+  return null
+}
+
 /** Replays a list of UCI moves from a FEN. Throws on an illegal move. */
 export function replay(uci: string[], fen = START_FEN): PlayedMove[] {
   const out: PlayedMove[] = []
