@@ -79,6 +79,11 @@ describe('buildChapters', () => {
     const chs = buildChapters(tree, { opening: (k) => eco.get(k), custom: (k) => custom.get(k) })
     expect(chs.roots[1]).toMatchObject({ name: 'Falkbeer', title: 'Falkbeer', custom: true, lines: 4 })
     expect(chs.lineName(path('2...Nf6 3.f4 d5'))).toEqual({ name: 'Counter-strike', custom: true })
+    // A chapter is named after the position following your reply, where a new name is stored.
+    expect(chs.roots[1].nameKey).toBe(findNode(tree, path('2...Nf6 3.f4'))!.key)
+    custom.clear()
+    custom.set(chs.roots[1].nameKey, 'Gambit!')
+    expect(buildChapters(tree, { opening: (k) => eco.get(k), custom: (k) => custom.get(k) }).roots[1].title).toBe('Gambit!')
   })
 
   it('follows chapter starts forced or prevented by the user', async () => {

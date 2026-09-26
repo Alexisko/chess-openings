@@ -292,9 +292,9 @@ export function OverviewPage() {
             {p === undefined ? '–' : pct(p)}
           </span>
           <Link
-            to={`${builderUrl(rep.id, row.first.path)}&f=${row.first.path.join(',')}`}
+            to={builderUrl(rep.id, row.first.path)}
             className="grid place-items-center pt-0.5 text-faint hover:text-brass"
-            title="Work on this line in the builder (focused)"
+            title="Work on this line in the builder"
           >
             <TargetIcon size={15} />
           </Link>

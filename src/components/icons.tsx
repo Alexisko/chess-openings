@@ -195,3 +195,11 @@ export function MoonIcon(p: IconProps) {
     </Svg>
   )
 }
+
+export function PencilIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+    </Svg>
+  )
+}
