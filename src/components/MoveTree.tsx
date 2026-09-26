@@ -9,6 +9,8 @@ interface Props {
   onJump: (path: string[]) => void
   /** Share of games for an opponent move at a branch point, if known. */
   share?: (parent: TreeNode, child: TreeNode) => number | undefined
+  /** Names of other repertoires a move joins (transposition across repertoires). */
+  crossNote?: (parent: TreeNode, child: TreeNode) => string[]
 }
 
 const id = (path: string[]) => path.join(',')
@@ -18,7 +20,7 @@ const id = (path: string[]) => path.join(',')
  * side lines are indented below the move they branch from. Deep side lines
  * that don't contain the current move start collapsed.
  */
-export function MoveTree({ root, current, onJump, share }: Props) {
+export function MoveTree({ root, current, onJump, share, crossNote }: Props) {
   const currentId = id(current)
   const [toggled, setToggled] = useState<Set<string>>(new Set())
   const currentRef = useRef<HTMLButtonElement>(null)
@@ -48,6 +50,7 @@ export function MoveTree({ root, current, onJump, share }: Props) {
   const move = (parent: TreeNode, node: TreeNode, showNumber: boolean) => {
     const isCurrent = id(node.path) === currentId
     const s = parent.children.length > 1 && !node.byMe && share ? share(parent, node) : undefined
+    const joins = crossNote?.(parent, node) ?? []
     return (
       <span key={id(node.path)} className="inline-flex items-baseline">
         {(showNumber || (node.ply - 1) % 2 === 0) && (
@@ -69,6 +72,11 @@ export function MoveTree({ root, current, onJump, share }: Props) {
           {node.transposition && <span title="Transposes to another line"> ↪</span>}
         </button>
         {s !== undefined && <span className="ml-0.5 text-[10px] text-faint tabular-nums">{pct(s)}</span>}
+        {joins.length > 0 && (
+          <span className="ml-0.5 text-[10px] text-info" title={`This position is also in ${joins.join(', ')}`}>
+            ↪ {joins.join(', ')}
+          </span>
+        )}
       </span>
     )
   }

@@ -142,6 +142,17 @@ describe('line runs and grading', () => {
     expect(run.finished).toBe(true)
   })
 
+  it('never grades a practice run', async () => {
+    const rep = await createRepertoire('White', 'white', d)
+    await addLine(rep, ['e2e4', 'e7e5', 'g1f3'], {}, d)
+    const [l] = enumerateLines(buildGraph(await loadMoves(rep.id, d), 'white'))
+    const run = new LineRun({ line: l, startPly: 0, endPly: l.moves.length, focus: l.cardKeys }, 'review', { practice: true })
+    expect(run.submit('d2d4')).toMatchObject({ kind: 'wrong', graded: false })
+    expect(run.submit('e2e4')).toMatchObject({ kind: 'correct', graded: false })
+    run.advanceAuto()
+    expect(run.submit('g1f3')).toMatchObject({ kind: 'correct', graded: false })
+  })
+
   it('plays mastered moves by itself and jumps over long mastered stretches', async () => {
     const rep = await createRepertoire('White', 'white', d)
     // 1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3

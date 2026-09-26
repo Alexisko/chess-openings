@@ -23,7 +23,8 @@ export function HomePage() {
   const reps = useRepertoires()
   const settings = useSettings()
   const counts = useLiveQuery(async () => {
-    const cards = await db.cards.toArray()
+    const paused = new Set((await db.repertoires.toArray()).filter((r) => r.paused).map((r) => r.id))
+    const cards = (await db.cards.toArray()).filter((c) => !paused.has(c.repertoireId))
     const now = new Date()
     return {
       due: cards.filter((c) => isDue(c.fsrs, now)).length,
@@ -225,7 +226,14 @@ function RepertoireRow({
           <div className="mt-0.5 truncate text-xs text-muted">
             {repStart(rep).moves.length > 0 && <>{formatMoves(repStart(rep).sans)} · </>}
             {data?.lines.length ?? 0} lines · {data?.cards.length ?? 0} moves
-            {due > 0 && <span className="font-medium text-maple"> · {due} due</span>}
+            {rep.paused ? (
+              <span className="text-faint" title="Left out of daily training">
+                {' '}
+                · paused
+              </span>
+            ) : (
+              due > 0 && <span className="font-medium text-maple"> · {due} due</span>
+            )}
           </div>
         </div>
         <ScoreRing value={prep && data && data.moves.length > 0 ? prep.result.score : undefined} size={44} />

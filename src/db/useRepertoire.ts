@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
 import type { Card as FsrsCard } from 'ts-fsrs'
+import { crossIndex, type CrossIndex } from '../lib/chess/cross'
 import { buildGraph, enumerateLines, type Line, type RepGraph } from '../lib/chess/graph'
 import { repStart } from '../lib/chess/start'
 import { db, type Card, type RepMove, type Repertoire } from './schema'
@@ -41,4 +42,21 @@ export function useRepertoire(id: string | undefined): RepertoireData | null | u
 
 export function useRepertoires(): Repertoire[] | undefined {
   return useLiveQuery(() => db.repertoires.toArray().then((r) => r.sort((a, b) => a.createdAt - b.createdAt)), [])
+}
+
+/** The other repertoires of a colour, by the positions they continue from (see lib/chess/cross). */
+export function useCrossIndex(rep: Repertoire | undefined): CrossIndex | undefined {
+  const id = rep?.id
+  const color = rep?.color
+  const raw = useLiveQuery(async () => {
+    const others = (await db.repertoires.toArray()).filter((r) => r.color === color && r.id !== id)
+    return Promise.all(
+      others.map(async (r) => ({
+        rep: r,
+        moves: await db.moves.where({ repertoireId: r.id }).toArray(),
+        cards: await db.cards.where({ repertoireId: r.id }).toArray(),
+      })),
+    )
+  }, [id, color])
+  return useMemo(() => raw && crossIndex(raw), [raw])
 }

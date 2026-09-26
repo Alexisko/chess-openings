@@ -20,6 +20,10 @@ export async function renameRepertoire(id: string, name: string, d: AppDB = db) 
   await d.repertoires.update(id, { name, updatedAt: now() })
 }
 
+export async function setRepertoirePaused(id: string, paused: boolean, d: AppDB = db) {
+  await d.repertoires.update(id, { paused, updatedAt: now() })
+}
+
 export async function deleteRepertoire(id: string, d: AppDB = db) {
   await d.transaction('rw', [d.repertoires, d.moves, d.cards, d.reviews], async () => {
     await d.moves.where({ repertoireId: id }).delete()

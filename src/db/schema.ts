@@ -16,6 +16,11 @@ export interface Repertoire {
    * repertoires created before this existed, meaning the initial position.
    */
   startMoves?: string[]
+  /**
+   * Left out of training sessions started for all repertoires (Home, the Train
+   * tab) and of their counts. It can still be trained from its own page.
+   */
+  paused?: boolean
   createdAt: number
   updatedAt: number
 }

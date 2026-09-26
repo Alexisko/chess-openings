@@ -7,7 +7,8 @@ import { ColorDot, Notice } from '../../components/ui'
 import { findOverlaps, previewStartChange, setRepertoireStart } from '../../db/repertoire'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { useSettings } from '../../db/settings'
-import { useRepertoire } from '../../db/useRepertoire'
+import { useCrossIndex, useRepertoire } from '../../db/useRepertoire'
+import { crossAt, crossEntering, crossPath, type CrossRef } from '../../lib/chess/cross'
 import { formatMoves, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
 import { parseMoves, repStart } from '../../lib/chess/start'
 import { allKeys, buildTree, orderTree, type TreeNode } from '../../lib/chess/tree'
@@ -16,7 +17,6 @@ import { openingTrail, type OpeningName } from '../../lib/openings/names'
 import { preparedness } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl } from '../../lib/routes'
-import { retrievability } from '../../lib/srs/scheduler'
 
 /** Replies you have no answer to are listed when at least this share of games plays them. */
 const MIN_UNPREPARED_SHARE = 0.03
@@ -62,6 +62,7 @@ function toRows(start: TreeNode, explorer: Map<string, ExplorerData>): Row[] {
 export function OverviewPage() {
   const { id } = useParams()
   const data = useRepertoire(id)
+  const cross = useCrossIndex(data?.rep)
   const settings = useSettings()
   const depth = settings?.prepDepth ?? 6
   // Downloads the explorer data needed for the scores in the background.
@@ -88,13 +89,6 @@ export function OverviewPage() {
     [tree, explorer, data],
   )
 
-  const recall = useMemo(() => {
-    const now = new Date()
-    const map = new Map<string, number>()
-    for (const [k, c] of data?.cardMap ?? []) map.set(k, retrievability(c, now))
-    return map
-  }, [data])
-
   const startName = useMemo(
     () => openingTrail(startKeys.map((k) => explorer.get(k)?.opening)).at(-1)?.opening,
     [startKeys, explorer],
@@ -104,7 +98,7 @@ export function OverviewPage() {
   const [startMsg, setStartMsg] = useState<string>()
 
   if (!data || !settings || !tree) return data === null ? <p className="text-muted">Repertoire not found.</p> : null
-  const { rep, graph } = data
+  const { rep } = data
 
   /** Asks for new starting moves, shows what that deletes, then moves the start. */
   const changeStart = async () => {
@@ -191,9 +185,10 @@ export function OverviewPage() {
     // An own move is scored from the position before it (it is the only move there).
     const ownBefore = ownMovesUpTo(row.first) - (row.first.byMe ? 1 : 0)
     const remaining = depth - ownBefore
-    if (remaining <= 0) return undefined
+    if (remaining <= 0 || !prep) return undefined
     const from = row.first.byMe ? parentKey(row.first) : row.first.key
-    return preparedness({ graph, explorer, recall, depth: remaining }, from).score
+    // Same inputs as the overall score, so lines that go on in another repertoire follow into it.
+    return preparedness({ ...prep.inputs, depth: remaining }, from).score
   }
 
   const renderUnprepared = (u: Row['unprepared'][number], level: number) => {
@@ -225,7 +220,16 @@ export function OverviewPage() {
     const r = reach(row.first)
     const p = rowPrep(row)
     const own = ownMovesUpTo(row.last)
-    const endsEarly = !row.last.children.length && !row.last.transposition && own < depth
+    // The line ends where another repertoire goes on, or joins one on the way.
+    const continues = row.last.children.length ? [] : crossAt(cross, row.last.key, rep.id)
+    const joins = new Map<string, { ref: CrossRef; key: string }>()
+    if (!continues.length)
+      row.nodes.forEach((n, i) => {
+        for (const ref of crossEntering(cross, i ? row.nodes[i - 1].key : parentKey(row.first), n.key, rep.id))
+          if (!joins.has(ref.rep.id)) joins.set(ref.rep.id, { ref, key: n.key })
+      })
+    const elsewhere = continues.length ? continues.map((ref) => ({ ref, key: row.last.key })) : [...joins.values()]
+    const endsEarly = !row.last.children.length && !row.last.transposition && !continues.length && own < depth
     // Names that start within this row, after the one it inherits.
     const trail = openingTrail([before, ...row.nodes.map((n) => explorer.get(n.key)?.opening)])
     const named = trail.length > 0 && trail.at(-1)!.ply > 0
@@ -258,8 +262,18 @@ export function OverviewPage() {
                 )}
                 {row.last.transposition && <span className="text-muted"> ↪ transposes</span>}
               </Link>
-              {(endsEarly || named) && (
-                <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+              {(endsEarly || named || elsewhere.length > 0) && (
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] leading-4">
+                  {elsewhere.map(({ ref, key }) => (
+                    <Link
+                      key={ref.rep.id}
+                      to={builderUrl(ref.rep.id, crossPath(ref, key))}
+                      className="shrink-0 rounded bg-info/15 px-1 text-info hover:bg-info/25"
+                      title={continues.length ? 'This position is prepared further in another repertoire' : 'The line joins another repertoire here'}
+                    >
+                      ↪ {continues.length ? 'continues in' : 'joins'} {ref.rep.name}
+                    </Link>
+                  ))}
                   {endsEarly && (
                     <span
                       className="shrink-0 rounded bg-warn/15 px-1 text-warn"
