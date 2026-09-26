@@ -17,7 +17,6 @@ import { openingTrail, type OpeningName } from '../../lib/openings/names'
 import { preparedness } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl } from '../../lib/routes'
-import { retrievability } from '../../lib/srs/scheduler'
 
 /** Replies you have no answer to are listed when at least this share of games plays them. */
 const MIN_UNPREPARED_SHARE = 0.03
@@ -90,13 +89,6 @@ export function OverviewPage() {
     [tree, explorer, data],
   )
 
-  const recall = useMemo(() => {
-    const now = new Date()
-    const map = new Map<string, number>()
-    for (const [k, c] of data?.cardMap ?? []) map.set(k, retrievability(c, now))
-    return map
-  }, [data])
-
   const startName = useMemo(
     () => openingTrail(startKeys.map((k) => explorer.get(k)?.opening)).at(-1)?.opening,
     [startKeys, explorer],
@@ -106,7 +98,7 @@ export function OverviewPage() {
   const [startMsg, setStartMsg] = useState<string>()
 
   if (!data || !settings || !tree) return data === null ? <p className="text-muted">Repertoire not found.</p> : null
-  const { rep, graph } = data
+  const { rep } = data
 
   /** Asks for new starting moves, shows what that deletes, then moves the start. */
   const changeStart = async () => {
@@ -193,9 +185,10 @@ export function OverviewPage() {
     // An own move is scored from the position before it (it is the only move there).
     const ownBefore = ownMovesUpTo(row.first) - (row.first.byMe ? 1 : 0)
     const remaining = depth - ownBefore
-    if (remaining <= 0) return undefined
+    if (remaining <= 0 || !prep) return undefined
     const from = row.first.byMe ? parentKey(row.first) : row.first.key
-    return preparedness({ graph, explorer, recall, depth: remaining }, from).score
+    // Same inputs as the overall score, so lines that go on in another repertoire follow into it.
+    return preparedness({ ...prep.inputs, depth: remaining }, from).score
   }
 
   const renderUnprepared = (u: Row['unprepared'][number], level: number) => {

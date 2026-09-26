@@ -50,7 +50,13 @@ export function useCrossIndex(rep: Repertoire | undefined): CrossIndex | undefin
   const color = rep?.color
   const raw = useLiveQuery(async () => {
     const others = (await db.repertoires.toArray()).filter((r) => r.color === color && r.id !== id)
-    return Promise.all(others.map(async (r) => ({ rep: r, moves: await db.moves.where({ repertoireId: r.id }).toArray() })))
+    return Promise.all(
+      others.map(async (r) => ({
+        rep: r,
+        moves: await db.moves.where({ repertoireId: r.id }).toArray(),
+        cards: await db.cards.where({ repertoireId: r.id }).toArray(),
+      })),
+    )
   }, [id, color])
   return useMemo(() => raw && crossIndex(raw), [raw])
 }

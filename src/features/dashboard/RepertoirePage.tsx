@@ -13,13 +13,12 @@ import {
 } from '../../db/repertoire'
 import { useSettings } from '../../db/settings'
 import { useRepertoire, type RepertoireData } from '../../db/useRepertoire'
-import { pathTo } from '../../lib/chess/graph'
 import { graphToPgn, pgnToLines } from '../../lib/chess/pgn'
-import { formatMoves } from '../../lib/chess/position'
+import { formatMoves, replay } from '../../lib/chess/position'
 import { repStart } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
 import type { Gap } from '../../lib/prep/preparedness'
-import { usePreparedness } from '../../lib/prep/usePreparedness'
+import { usePreparedness, type PrepGap } from '../../lib/prep/usePreparedness'
 import { builderUrl, planUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
@@ -193,14 +192,13 @@ export function RepertoirePage() {
   )
 }
 
-function GapList({ data, gaps }: { data: RepertoireData; gaps: Gap[] }) {
+function GapList({ data, gaps }: { data: RepertoireData; gaps: PrepGap[] }) {
   return (
     <ul className="flex flex-col gap-2 text-sm">
       {gaps.map((g, i) => {
-        const start = repStart(data.rep)
-        const path = pathTo(data.graph, g.key)
-        const uci = [...start.moves, ...path.map((m) => m.uci)]
-        const sans = [...start.sans, ...path.map((m) => m.san)]
+        const uci = [...g.path]
+        const sans = replay(g.path).map((p) => p.san)
+        const elsewhere = g.rep.id !== data.rep.id
         if (g.uci && g.san) {
           uci.push(g.uci)
           sans.push(g.san)
@@ -213,11 +211,12 @@ function GapList({ data, gaps }: { data: RepertoireData; gaps: Gap[] }) {
               <div className="truncate font-display">{formatMoves(sans) || 'Starting position'}</div>
               <div className="text-xs text-muted">
                 {GAP_LABEL[g.kind]} · <span className="tabular-nums">{pct(g.reach, 1)}</span> of games
+                {elsewhere && <span className="text-info"> · in {g.rep.name}</span>}
               </div>
             </div>
             <Link
               className={`${train ? 'btn-ghost' : 'btn-primary'} shrink-0 px-2.5 py-1 text-xs`}
-              to={train ? `/train?mode=${g.kind === 'weak' ? 'drill' : 'learn'}&rep=${data.rep.id}` : builderUrl(data.rep.id, uci)}
+              to={train ? `/train?mode=${g.kind === 'weak' ? 'drill' : 'learn'}&rep=${g.rep.id}` : builderUrl(g.rep.id, uci)}
             >
               {train ? 'Train' : 'Prepare'}
             </Link>
