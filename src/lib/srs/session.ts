@@ -13,7 +13,7 @@ export type AttemptResult =
  * themselves, and a long mastered stretch between two focus moves is skipped
  * down to a short lead-in. Only the first attempt at each position counts;
  * after a mistake the correct move is shown and must be played before
- * continuing.
+ * continuing. A practice run (a line played again) is never graded.
  */
 export class LineRun {
   ply: number
@@ -23,17 +23,20 @@ export class LineRun {
   mustRetry = false
   /** Learn mode first pass: the owner's moves are shown before being played. */
   readonly demo: boolean
+  /** A line played again: nothing is graded. */
+  readonly practice: boolean
 
   readonly run: PlannedRun
   readonly mode: ReviewMode
   private readonly focusPlies: number[]
 
-  constructor(run: PlannedRun, mode: ReviewMode, opts: { demo?: boolean } = {}) {
+  constructor(run: PlannedRun, mode: ReviewMode, opts: { demo?: boolean; practice?: boolean } = {}) {
     this.run = run
     this.mode = mode
     this.ply = run.startPly
     this.focusPlies = focusPlies(run.line, run.focus)
     this.demo = opts.demo ?? false
+    this.practice = opts.practice ?? false
   }
 
   get moves() {
@@ -62,7 +65,7 @@ export class LineRun {
 
   /**
    * Checks the owner's move. `graded` tells the caller to record the attempt
-   * against the card (first attempt only, never in the demo pass).
+   * against the card (first attempt only, never in the demo pass or practice).
    */
   submit(uci: string): AttemptResult {
     const expected = this.expected
@@ -70,7 +73,7 @@ export class LineRun {
     const correct = sameMove(expected.fromFen, uci, expected.uci)
     const first = !this.attempted.has(this.ply)
     this.attempted.add(this.ply)
-    const graded = first && !this.demo
+    const graded = first && !this.demo && !this.practice
     if (correct) {
       this.mustRetry = false
       this.ply++

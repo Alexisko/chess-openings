@@ -2,7 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
-import { BookIcon, CheckIcon, CrossIcon, EyeIcon, SkipIcon, TargetIcon, TrainIcon } from '../../components/icons'
+import {
+  BookIcon,
+  CheckIcon,
+  CrossIcon,
+  EyeIcon,
+  FirstIcon,
+  LastIcon,
+  NextIcon,
+  PrevIcon,
+  SkipIcon,
+  TargetIcon,
+  TrainIcon,
+} from '../../components/icons'
 import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
 import { recordAttempt, learnedToday } from '../../db/reviews'
 import { db, type Repertoire, type ReviewMode } from '../../db/schema'
@@ -12,6 +24,7 @@ import { repStart } from '../../lib/chess/start'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN } from '../../lib/chess/position'
 import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../../lib/explorer'
 import { openingTrail } from '../../lib/openings/names'
+import { builderUrl } from '../../lib/routes'
 import { planDrill, planLearn, planReview, type PlannedRun } from '../../lib/srs/plan'
 import { LineRun } from '../../lib/srs/session'
 import { MoveInsight } from '../board/MoveInsight'
@@ -149,6 +162,9 @@ function ModeIcon({ mode, size }: { mode: TrainMode; size?: number }) {
 
 function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const [index, setIndex] = useState(0)
+  // The furthest line reached: lines before it are being played again, as practice.
+  const [furthest, setFurthest] = useState(0)
+  const practice = index < furthest
   const [pass, setPass] = useState<'demo' | 'recall'>(mode === 'learn' ? 'demo' : 'recall')
   // LineRun is a small mutable state machine; `tick` re-renders after it changes.
   const [, setTick] = useState(0)
@@ -161,8 +177,8 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
 
   const current = queue[index] as QueuedRun | undefined
   const run = useMemo(
-    () => (current ? new LineRun(current.run, mode, { demo: pass === 'demo' }) : null),
-    [current, pass, mode],
+    () => (current ? new LineRun(current.run, mode, { demo: pass === 'demo', practice }) : null),
+    [current, pass, mode, practice],
   )
   // Feedback belongs to one run, so it resets automatically on the next line or pass.
   const [fb, setFb] = useState<{ run: LineRun; feedback: Feedback; id: number }>()
@@ -176,34 +192,54 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         : mode === 'learn'
           ? { kind: 'info', text: 'Now play it from memory.' }
           : undefined
-  const fens = useMemo(() => {
-    if (!current) return []
+  // Every position from the initial one: the repertoire's setup moves, then the line.
+  const path = useMemo(() => {
+    if (!current) return { fens: [], ucis: [], sans: [] }
     const moves = current.run.line.moves
     const last = moves[moves.length - 1]
-    return [...moves.map((m) => m.fromFen), playUci(last.fromFen, last.uci)!.fen]
+    const setup = replay(repStart(current.rep).moves)
+    return {
+      fens: [START_FEN, ...setup.map((p) => p.fen), ...moves.slice(1).map((m) => m.fromFen), playUci(last.fromFen, last.uci)!.fen],
+      ucis: [...setup.map((p) => p.uci), ...moves.map((m) => m.uci)],
+      sans: [...setup.map((p) => p.san), ...moves.map((m) => m.san)],
+    }
   }, [current])
-  // Every position from the initial one: the repertoire's setup moves, then the line.
   const settings = useSettings()
-  const keys = useMemo(
-    () =>
-      current
-        ? [
-            positionKey(START_FEN),
-            ...replay(repStart(current.rep).moves).map((p) => positionKey(p.fen)),
-            ...current.run.line.moves.map((m) => m.toKey),
-          ]
-        : [],
-    [current],
-  )
+  const keys = useMemo(() => path.fens.map(positionKey), [path])
   const openings = useOpeningNames(keys, settings?.explorerFilter)
 
+  const goToLine = useCallback(
+    (i: number) => {
+      if (mode === 'learn') setPass('demo')
+      setIndex(i)
+      setFurthest((f) => Math.max(f, i))
+    },
+    [mode],
+  )
   const next = useCallback(() => {
     if (mode === 'learn' && pass === 'demo') setPass('recall')
-    else {
-      if (mode === 'learn') setPass('demo')
-      setIndex((i) => i + 1)
+    else goToLine(index + 1)
+  }, [mode, pass, index, goToLine])
+
+  // Looking back at earlier positions of the line; like feedback, it belongs to one run.
+  const [browse, setBrowse] = useState<{ run: LineRun; at: number }>()
+  const live = current && run ? repStart(current.rep).moves.length + run.ply : 0
+  const view = browse && browse.run === run ? Math.min(browse.at, live) : live
+  const browsing = view < live
+  // Back at the live position, stop browsing so the view follows the line again.
+  const setView = useCallback((at: number) => setBrowse(run && at < live ? { run, at: Math.max(0, at) } : undefined), [run, live])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'ArrowLeft') setView(view - 1)
+      else if (e.key === 'ArrowRight') setView(view + 1)
+      else return
+      e.preventDefault()
     }
-  }, [mode, pass])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setView, view])
 
   const fbId = fb && fb.run === run ? fb.id : 0
   // With explanations on, a correct move pauses the line until you continue. Only
@@ -211,8 +247,9 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const explaining = explain && !!feedback?.move && !!run && !run.awaitingUser && continued !== fbId ? feedback.move : undefined
 
   // Auto-play the opponent's and the mastered moves, and advance when the run is finished.
+  // Both wait while you look back at earlier moves.
   useEffect(() => {
-    if (!run || explaining) return
+    if (!run || explaining || browsing) return
     if (run.finished) {
       const t = setTimeout(next, 900)
       return () => clearTimeout(t)
@@ -228,23 +265,14 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
 
   if (!current || !run) return <Summary mode={mode} stats={stats} total={queue.length} />
 
-  const skip = () => {
-    if (mode === 'learn') setPass('demo')
-    setIndex((i) => i + 1)
-  }
-
   const { rep } = current
-  const line = current.run.line
-  // Moves so far, including the repertoire's setup moves (e.g. 1.e4 e5 2.Nc3), numbered correctly.
   const start = repStart(rep)
-  const lineText = (ply: number) => formatMoves([...start.sans, ...line.moves.slice(0, ply).map((m) => m.san)])
-  const fen = fens[run.ply]
+  const fen = path.fens[view]
   // Names of positions already on the board only: never the one your pending move reaches.
-  const trail = openingTrail(openings, start.moves.length + run.ply)
-  const prev = run.ply > 0 ? line.moves[run.ply - 1] : undefined
-  const lastMove = prev ? (moveSquares(prev.fromFen, prev.uci) ?? undefined) : undefined
+  const trail = openingTrail(openings, view)
+  const lastMove = view > 0 ? (moveSquares(path.fens[view - 1], path.ucis[view - 1]) ?? undefined) : undefined
   const expected = run.expected
-  const showHint = run.awaitingUser && expected && (run.demo || run.mustRetry)
+  const showHint = !browsing && run.awaitingUser && expected && (run.demo || run.mustRetry)
   const hint = showHint ? moveSquares(expected.fromFen, expected.uci) : null
   const arrows: Arrow[] = hint ? [{ from: hint[0], to: hint[1], brush: run.mustRetry ? 'red' : 'green' }] : []
 
@@ -268,7 +296,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         setStats((s) => ({
           ...s,
           wrong: s.wrong + 1,
-          mistakes: [...s.mistakes, lineText(run.ply + 1)],
+          mistakes: [...s.mistakes, formatMoves(path.sans.slice(0, live + 1))],
         }))
         await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
       }
@@ -280,9 +308,6 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
 
   const giveUp = () => onMove('0000')
   const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
-  // The line so far, with the last move picked out.
-  const words = lineText(run.ply).split(' ')
-  const lastWord = run.ply > 0 ? words.pop() : undefined
   const { startPly, endPly } = current.run
   const progress = (index + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / queue.length
 
@@ -307,18 +332,43 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
           </div>
           <span className="tabular-nums">
             line {index + 1} / {queue.length}
+            {practice && (
+              <span className="text-brass" title="A line played again doesn’t change your schedule">
+                {' '}
+                · replay, not graded
+              </span>
+            )}
           </span>
         </div>
         <Board
           key={boardVersion}
           fen={fen}
           orientation={rep.color}
-          movable={run.awaitingUser ? rep.color : 'none'}
+          movable={run.awaitingUser && !browsing ? rep.color : 'none'}
           lastMove={lastMove}
           arrows={arrows}
           onMove={onMove}
           flash={flash}
         />
+        <div className="grid grid-cols-4 gap-2" title="Look back at the moves so far · Keyboard: ← →">
+          <button className="btn-ghost" onClick={() => setView(0)} disabled={view <= 0} aria-label="Initial position">
+            <FirstIcon />
+          </button>
+          <button className="btn-ghost" onClick={() => setView(view - 1)} disabled={view <= 0} aria-label="Back">
+            <PrevIcon />
+          </button>
+          <button className="btn-ghost" onClick={() => setView(view + 1)} disabled={!browsing} aria-label="Forward">
+            <NextIcon />
+          </button>
+          <button
+            className={browsing ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setView(live)}
+            disabled={!browsing}
+            aria-label="Back to the current position"
+          >
+            <LastIcon />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 md:pt-[4.25rem]">
@@ -343,32 +393,36 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         )}
 
         <div className="card px-4 py-3">
-          <div className="eyebrow mb-1.5">Line so far</div>
-          <OpeningTrail trail={trail} className="mb-1" />
-          <p className="font-display text-[17px] leading-relaxed">
-            {words.join(' ')}
-            {lastWord && (
-              <>
-                {words.length > 0 && ' '}
-                <span className="rounded bg-maple/15 px-1 text-maple">{lastWord}</span>
-              </>
+          <div className="mb-1.5 flex items-baseline gap-2">
+            <span className="eyebrow">Line so far</span>
+            {browsing && (
+              <button className="ml-auto text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
+                Looking back · return to the current position
+              </button>
             )}
-            {!lastWord && !words.join('') && <span className="text-faint">Starting position</span>}
-          </p>
-          {line.end === 'transposition' && run.finished && endPly === line.moves.length && (
+          </div>
+          <OpeningTrail trail={trail} className="mb-1" />
+          <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
+          {current.run.line.end === 'transposition' && run.finished && endPly === current.run.line.moves.length && (
             <p className="mt-2 text-xs text-muted">↪ This line transposes into another one you know.</p>
           )}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {run.awaitingUser && !run.demo && !run.mustRetry && (
-            <button className="btn-ghost" onClick={giveUp} title="Counts as a mistake">
+          {run.awaitingUser && !run.demo && !run.mustRetry && !browsing && (
+            <button className="btn-ghost" onClick={giveUp} title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}>
               <EyeIcon size={16} /> Show move
             </button>
           )}
-          <button className="btn-ghost" onClick={skip}>
+          <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title="Play the previous line again (not graded)">
+            <PrevIcon size={16} /> Previous line
+          </button>
+          <button className="btn-ghost" onClick={() => goToLine(index + 1)}>
             <SkipIcon size={16} /> Skip line
           </button>
+          <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
+            Open in builder
+          </Link>
           <button className="btn-ghost ml-auto" onClick={() => setIndex(queue.length)}>
             End session
           </button>
@@ -401,6 +455,32 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/** The moves so far, numbered; click one to look at the position after it. */
+function MoveList({ sans, view, onJump }: { sans: string[]; view: number; onJump: (ply: number) => void }) {
+  if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-faint">Starting position</p>
+  return (
+    <p className="font-display text-[17px] leading-relaxed">
+      {sans.map((san, i) => (
+        <span key={i}>
+          {i > 0 && ' '}
+          {i % 2 === 0 && `${i / 2 + 1}. `}
+          <button
+            className={`rounded px-0.5 transition-colors ${i + 1 === view ? 'bg-maple/15 px-1 text-maple' : 'hover:text-maple'}`}
+            onClick={(e) => {
+              onJump(i + 1)
+              // A lingering focus ring would read as a second highlighted move (keyboard focus stays).
+              if (e.detail) e.currentTarget.blur()
+            }}
+            aria-current={i + 1 === view ? 'step' : undefined}
+          >
+            {san}
+          </button>
+        </span>
+      ))}
+    </p>
   )
 }
 
