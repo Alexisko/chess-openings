@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
-import { db, type PositionNote } from '../../db/schema'
+import { db, type AppDB, type PositionNote } from '../../db/schema'
 import type { TreeNode } from '../chess/tree'
 import { buildChapters, type ChapterBreak, type Chapters } from './chapters'
-import { useEco, type EcoTable } from './eco'
+import { loadEco, useEco, type EcoTable } from './eco'
 import type { OpeningName } from './names'
 
 /** Where the names of positions come from: the user's names first, then the standard opening names. */
@@ -19,26 +19,33 @@ export interface Naming {
   display: (key: string) => OpeningName | undefined
 }
 
+export function makeNaming(eco: EcoTable, rows: PositionNote[]): Naming {
+  const notes = new Map(rows.map((r) => [r.key, r]))
+  const opening = (key: string) => eco.get(key)
+  const custom = (key: string) => notes.get(key)?.name || undefined
+  return {
+    eco,
+    notes,
+    opening,
+    custom,
+    breaks: (key) => notes.get(key)?.chapter,
+    display: (key) => {
+      const name = custom(key)
+      return name ? { eco: opening(key)?.eco ?? '', name } : opening(key)
+    },
+  }
+}
+
+/** The names, loaded once (outside React). */
+export async function loadNaming(d: AppDB = db): Promise<Naming> {
+  const [eco, rows] = await Promise.all([loadEco(), d.positions.toArray()])
+  return makeNaming(eco, rows)
+}
+
 export function useNaming(): Naming | undefined {
   const eco = useEco()
   const rows = useLiveQuery(() => db.positions.toArray(), [])
-  return useMemo(() => {
-    if (!eco || !rows) return undefined
-    const notes = new Map(rows.map((r) => [r.key, r]))
-    const opening = (key: string) => eco.get(key)
-    const custom = (key: string) => notes.get(key)?.name || undefined
-    return {
-      eco,
-      notes,
-      opening,
-      custom,
-      breaks: (key) => notes.get(key)?.chapter,
-      display: (key) => {
-        const name = custom(key)
-        return name ? { eco: opening(key)?.eco ?? '', name } : opening(key)
-      },
-    }
-  }, [eco, rows])
+  return useMemo(() => (eco && rows ? makeNaming(eco, rows) : undefined), [eco, rows])
 }
 
 /** Chapters of a line tree, once the names are loaded. */

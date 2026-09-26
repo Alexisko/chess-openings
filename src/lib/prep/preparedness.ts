@@ -175,6 +175,22 @@ export function findGaps(inp: PrepInputs, minReach = 0.001): Gap[] {
   return gaps.sort((a, b) => b.weight - a.weight || a.ownMoves - b.ownMoves)
 }
 
+/**
+ * Preparedness from a position inside the repertoire (e.g. where a chapter
+ * starts), with the target depth reduced by the own moves already played to
+ * get there. `ownBefore` counts those moves.
+ */
+export function preparednessFrom(inp: PrepInputs, key: string, ownBefore: number): PrepResult {
+  return preparedness({ ...inp, depth: Math.max(1, inp.depth - ownBefore) }, key)
+}
+
+/** Own moves among the plies `from`…end of a path from the initial position. */
+export function ownMovesIn(path: string[], from: number, color: 'white' | 'black'): number {
+  let n = 0
+  for (let i = from; i < path.length; i++) if ((i % 2 === 0) === (color === 'white')) n++
+  return n
+}
+
 /** Opponent-to-move positions whose explorer data is needed, within the depth target. */
 export function positionsNeedingData(graph: RepGraph, depth: number): string[] {
   const out: string[] = []
