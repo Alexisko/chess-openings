@@ -4,8 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { ChapterLines } from '../../components/ChapterLines'
 import { ChapterTraining } from '../../components/ChapterTraining'
-import { ChapterList, ChapterMenu, ChapterNavToggle, ChapterStepper } from '../../components/ChapterNav'
-import { useChapterNavStyle } from '../../lib/openings/useChapterNavStyle'
+import { ChapterList, ChapterStepper } from '../../components/ChapterNav'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import { FirstIcon, LastIcon, NextIcon, PencilIcon, PrevIcon } from '../../components/icons'
 import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
@@ -34,6 +33,7 @@ import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type Explor
 import { GLYPH_NAMES, GLYPH_TONE, GLYPHS, type Glyph } from '../../lib/chess/glyphs'
 import type { Chapter, ChapterBreak } from '../../lib/openings/chapters'
 import { useChapters, useNaming, type Naming } from '../../lib/openings/naming'
+import { renameChapter } from '../../lib/openings/renameChapter'
 import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
@@ -43,7 +43,7 @@ import { MoveInsight } from '../board/MoveInsight'
 import { builderUrl } from '../../lib/routes'
 import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
-import { confirmDialog, promptDialog } from '../../lib/dialog'
+import { confirmDialog } from '../../lib/dialog'
 
 function readEngineToggle() {
   try {
@@ -141,7 +141,6 @@ export function BuilderPage() {
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
   const naming = useNaming()
   const chapters = useChapters(tree, naming)
-  const [navStyle, setNavStyle] = useChapterNavStyle()
   // Engine symbols on the opponent's moves; cloud evaluations are fetched while the engine is on.
   const { glyphOf, engineGlyph } = useEngineGlyphs(tree, engineOn)
   const prep = usePreparedness(data, savedFilter, settings?.prepDepth ?? 6)
@@ -263,23 +262,11 @@ export function BuilderPage() {
   // The chapter of the position on the board (the first one at the start, which only leads into chapters).
   const currentPath = path.slice(0, cursor)
   const chapter = chapters && (chapters.of(currentPath) ?? chapters.list[0])
-  const showList = navStyle === 'list' && !!chapters && chapters.list.length > 1
+  const showList = !!chapters && chapters.list.length > 1
   const selectChapter = (ch: Chapter) => goTo(ch.node.path)
   const chapterScore = (ch: Chapter) =>
     prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, start.moves.length, color)).score
-  const renameChapter = async (ch: Chapter) => {
-    const name = await promptDialog({
-      title: 'Rename chapter',
-      message: 'The name shows wherever this position comes up. Leave it empty to use the opening name.',
-      defaultValue: ch.custom ? ch.name : '',
-      placeholder: ch.custom ? undefined : ch.name,
-      confirmLabel: 'Rename',
-    })
-    if (name === null) return
-    await setPositionName(ch.nameKey, name)
-    // A name given from the chapter's first move would win over the new one.
-    if (ch.nameKey !== ch.node.key && naming?.custom(ch.node.key)) await setPositionName(ch.node.key, '')
-  }
+
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -362,8 +349,6 @@ export function BuilderPage() {
                   from {formatMoves(start.sans)}
                 </span>
               )}
-              <span className="ml-auto" />
-              <ChapterNavToggle style={navStyle} onChange={setNavStyle} />
             </div>
             <div className="max-h-[30vh] overflow-y-auto">
               <ChapterList
@@ -385,16 +370,12 @@ export function BuilderPage() {
           <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
             {chapters && chapter ? (
               <ChapterStepper chapters={chapters} selected={chapter} onSelect={selectChapter}>
-                {navStyle === 'menu' ? (
-                  <ChapterMenu chapters={chapters} selected={chapter} onSelect={selectChapter} />
-                ) : (
-                  <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
-                    {chapter.title}
-                  </span>
-                )}
+                <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
+                  {chapter.title}
+                </span>
                 <button
                   className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
-                  onClick={() => renameChapter(chapter)}
+                  onClick={() => renameChapter(chapter, naming)}
                   aria-label="Rename chapter"
                   title="Rename chapter"
                 >
@@ -404,7 +385,6 @@ export function BuilderPage() {
             ) : (
               <span className="px-2 font-display text-[15px] font-medium">Lines</span>
             )}
-            {!showList && chapters && <ChapterNavToggle style={navStyle} onChange={setNavStyle} />}
           </div>
           <div data-tree-scroll className="p-2.5 md:max-h-[45vh] md:overflow-y-auto">
             {!tree.children.length ? (
