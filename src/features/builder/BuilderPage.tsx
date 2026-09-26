@@ -16,7 +16,8 @@ import {
 } from '../../db/repertoire'
 import { db } from '../../db/schema'
 import { useSettings } from '../../db/settings'
-import { useRepertoire } from '../../db/useRepertoire'
+import { useCrossIndex, useRepertoire } from '../../db/useRepertoire'
+import { crossAt, crossEntering, crossMove, crossPath } from '../../lib/chess/cross'
 import { myMove, pathTo } from '../../lib/chess/graph'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
@@ -52,6 +53,7 @@ function readExplorerDb(): ExplorerFilter['db'] | undefined {
 export function BuilderPage() {
   const { id } = useParams()
   const data = useRepertoire(id)
+  const cross = useCrossIndex(data?.rep)
   const settings = useSettings()
   const [params, setParams] = useSearchParams()
   const start = data ? repStart(data.rep) : startOf()
@@ -131,6 +133,11 @@ export function BuilderPage() {
     [cached],
   )
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
+  const repId = data?.rep.id ?? ''
+  const crossNote = useCallback(
+    (parent: TreeNode, node: TreeNode) => crossEntering(cross, parent.key, node.key, repId).map((r) => r.rep.name),
+    [cross, repId],
+  )
   // Opening names along the line (cached explorer data; the current position is fetched above).
   // Names are the same in both databases: take them from whichever has the position cached.
   const panelNames = useOpeningNames(pathKeys, panelFilter)
@@ -230,10 +237,16 @@ export function BuilderPage() {
   const canonical = graph ? [...start.moves, ...pathTo(graph, key).map((m) => m.uci)] : []
   const isTransposition =
     canonical.length > start.moves.length && canonical.join(',') !== path.slice(0, cursor).join(',') && graph?.depth.has(key)
+  // Other repertoires of this colour that continue from here.
+  const elsewhere = crossAt(cross, key, rep.id).map((ref) => ({ ref, move: myTurn ? crossMove(ref, key) : undefined }))
 
   const last = cursor > 0 ? played[cursor - 1] : undefined
   const lastSquares = last ? (moveSquares(fens[cursor - 1], last.uci) ?? undefined) : undefined
   const arrows: Arrow[] = mine ? [{ ...squaresOf(fen, mine.uci), brush: 'green' }] : []
+  // What the other repertoires play here, when it isn't this one's move.
+  for (const { move } of elsewhere)
+    if (move && move.uci !== mine?.uci && !arrows.some((a) => a.to === squaresOf(fen, move.uci).to))
+      arrows.push({ ...squaresOf(fen, move.uci), brush: 'paleBlue' })
   if (threatArrow?.fen === fen) arrows.push(threatArrow.arrow)
   const focusSans = played.slice(0, focus.length).map((p) => p.san)
   const focusName = focus.length ? openingTrail(openings, focus.length).at(-1)?.opening.name : undefined
@@ -344,7 +357,7 @@ export function BuilderPage() {
           </div>
           <div data-tree-scroll className="px-3 py-2.5 md:max-h-[40vh] md:overflow-y-auto">
             {tree.children.length ? (
-              <MoveTree root={tree} current={path.slice(0, cursor)} onJump={(p) => goTo(p)} share={shareOf} />
+              <MoveTree root={tree} current={path.slice(0, cursor)} onJump={(p) => goTo(p)} share={shareOf} crossNote={crossNote} />
             ) : (
               <p className="text-sm text-muted">Play a move on the board or pick one from the explorer.</p>
             )}
@@ -404,6 +417,36 @@ export function BuilderPage() {
               </Notice>
             </div>
           )}
+          {elsewhere.map(({ ref, move }) => {
+            const there = crossPath(ref, key)
+            const link = (
+              <Link className="font-medium underline underline-offset-2" to={builderUrl(ref.rep.id, there)}>
+                {ref.rep.name}
+              </Link>
+            )
+            const conflict = move && mine && move.uci !== mine.uci
+            return (
+              <div key={ref.rep.id} className="mb-3">
+                <Notice tone={conflict ? 'warn' : 'info'}>
+                  {conflict ? (
+                    <>
+                      Same position, different move: your {link} repertoire plays <b>{move.san}</b> here, this one plays{' '}
+                      <b>{mine.san}</b>.
+                    </>
+                  ) : move && !mine ? (
+                    <>
+                      This position is also in your {link} repertoire, which plays <b>{move.san}</b> here (blue arrow).
+                    </>
+                  ) : (
+                    <>
+                      This position is also in your {link} repertoire
+                      {there.join(',') !== path.slice(0, cursor).join(',') && <>, via {formatMoves(replay(there).map((m) => m.san))}</>}.
+                    </>
+                  )}
+                </Notice>
+              </div>
+            )
+          })}
           <ExplorerPanel
             state={explorerState}
             filter={panelFilter}

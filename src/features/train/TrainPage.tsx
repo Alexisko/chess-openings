@@ -19,6 +19,7 @@ import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
 import { recordAttempt, learnedToday } from '../../db/reviews'
 import { db, type Repertoire, type ReviewMode } from '../../db/schema'
 import { getSettings, useSettings } from '../../db/settings'
+import { crossAt, crossIndex } from '../../lib/chess/cross'
 import { buildGraph, enumerateLines, type Line } from '../../lib/chess/graph'
 import { repStart } from '../../lib/chess/start'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN } from '../../lib/chess/position'
@@ -32,6 +33,8 @@ import { MoveInsight } from '../board/MoveInsight'
 interface QueuedRun {
   rep: Repertoire
   run: PlannedRun
+  /** Other repertoires that go on from where the line ends. */
+  continuesIn: string[]
 }
 
 /** Modes you can train in ('game' reviews only come from imported games). */
@@ -42,18 +45,23 @@ const MODE_TITLE: Record<TrainMode, string> = { review: 'Review', learn: 'Learn 
 /** Builds the session queue once, from a snapshot of the data. */
 async function buildQueue(mode: TrainMode, repId: string | null, extraNew: number): Promise<QueuedRun[]> {
   const settings = await getSettings()
-  const reps = (await db.repertoires.toArray())
+  const all = await db.repertoires.toArray()
+  const reps = all
     // A paused repertoire only trains when asked for by name.
     .filter((r) => (repId ? r.id === repId : !r.paused))
     .sort((a, b) => (a.color === b.color ? a.createdAt - b.createdAt : a.color === 'white' ? -1 : 1))
+  // Every repertoire, paused or not, to tell where a line goes on in another one.
+  const withMoves = await Promise.all(all.map(async (rep) => ({ rep, moves: await db.moves.where({ repertoireId: rep.id }).toArray() })))
+  const cross = {
+    white: crossIndex(withMoves.filter((r) => r.rep.color === 'white')),
+    black: crossIndex(withMoves.filter((r) => r.rep.color === 'black')),
+  }
   const now = new Date()
   let newBudget = Math.max(0, settings.newPerDay - (await learnedToday())) + extraNew
   const queue: QueuedRun[] = []
   for (const rep of reps) {
-    const [moves, cards] = await Promise.all([
-      db.moves.where({ repertoireId: rep.id }).toArray(),
-      db.cards.where({ repertoireId: rep.id }).toArray(),
-    ])
+    const moves = withMoves.find((r) => r.rep.id === rep.id)!.moves
+    const cards = await db.cards.where({ repertoireId: rep.id }).toArray()
     const lines = enumerateLines(buildGraph(moves, rep.color, repStart(rep).key))
     const cardMap = new Map(cards.map((c) => [c.positionKey, c.fsrs]))
     let runs: PlannedRun[] = []
@@ -64,7 +72,11 @@ async function buildQueue(mode: TrainMode, repId: string | null, extraNew: numbe
       runs = planLearn(lines, cardMap, newBudget, weight)
       newBudget -= runs.reduce((s, r) => s + r.focus.length, 0)
     }
-    queue.push(...runs.map((run) => ({ rep, run })))
+    const continuesIn = (run: PlannedRun) =>
+      run.line.end === 'leaf' && run.endPly === run.line.moves.length
+        ? crossAt(cross[rep.color], run.line.moves.at(-1)!.toKey, rep.id).map((r) => r.rep.name)
+        : []
+    queue.push(...runs.map((run) => ({ rep, run, continuesIn: continuesIn(run) })))
   }
   return queue
 }
@@ -177,6 +189,14 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   const [continued, setContinued] = useState(0)
 
   const current = queue[index] as QueuedRun | undefined
+  // Where the line goes on: another line of this repertoire, or another repertoire.
+  const endNote = !current
+    ? undefined
+    : current.run.line.end === 'transposition' && current.run.endPly === current.run.line.moves.length
+      ? 'This line transposes into another one you know.'
+      : current.continuesIn.length
+        ? `This line continues in your ${current.continuesIn.join(', ')} repertoire.`
+        : undefined
   const run = useMemo(
     () => (current ? new LineRun(current.run, mode, { demo: pass === 'demo', practice }) : null),
     [current, pass, mode, practice],
@@ -252,7 +272,8 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   useEffect(() => {
     if (!run || explaining || browsing) return
     if (run.finished) {
-      const t = setTimeout(next, 900)
+      // Longer when there's a note to read at the end.
+      const t = setTimeout(next, endNote ? 3000 : 900)
       return () => clearTimeout(t)
     }
     if (!run.awaitingUser) {
@@ -404,9 +425,7 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
           </div>
           <OpeningTrail trail={trail} className="mb-1" />
           <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
-          {current.run.line.end === 'transposition' && run.finished && endPly === current.run.line.moves.length && (
-            <p className="mt-2 text-xs text-muted">↪ This line transposes into another one you know.</p>
-          )}
+          {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
         </div>
 
         <div className="flex flex-wrap gap-2">
