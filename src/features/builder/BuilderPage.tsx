@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { ChapterLines } from '../../components/ChapterLines'
-import { ChapterList, ChapterMenu, ChapterNavToggle, ChapterStepper } from '../../components/ChapterNav'
-import { useChapterNavStyle } from '../../lib/openings/useChapterNavStyle'
+import { ChapterTraining } from '../../components/ChapterTraining'
+import { ChapterList, ChapterStepper } from '../../components/ChapterNav'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import { FirstIcon, LastIcon, NextIcon, PencilIcon, PrevIcon } from '../../components/icons'
 import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
+import { pct, scoreColor } from '../../components/format'
 import {
   addLine,
   MoveConflictError,
@@ -25,12 +26,14 @@ import { useCrossIndex, useRepertoire } from '../../db/useRepertoire'
 import { crossAt, crossEntering, crossMove, crossPath } from '../../lib/chess/cross'
 import { myMove, pathTo } from '../../lib/chess/graph'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf, type PlayedMove } from '../../lib/chess/position'
+import { useEngineGlyphs } from '../../lib/engine/useEngineGlyphs'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
 import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type ExplorerFilter } from '../../lib/explorer'
-import { GLYPH_NAMES, GLYPH_TONE, GLYPHS } from '../../lib/chess/glyphs'
+import { GLYPH_NAMES, GLYPH_TONE, GLYPHS, type Glyph } from '../../lib/chess/glyphs'
 import type { Chapter, ChapterBreak } from '../../lib/openings/chapters'
 import { useChapters, useNaming, type Naming } from '../../lib/openings/naming'
+import { renameChapter } from '../../lib/openings/renameChapter'
 import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
@@ -38,7 +41,9 @@ import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
 import { MoveInsight } from '../board/MoveInsight'
 import { builderUrl } from '../../lib/routes'
-import { confirmDialog, promptDialog } from '../../lib/dialog'
+import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
+import { usePreparedness } from '../../lib/prep/usePreparedness'
+import { confirmDialog } from '../../lib/dialog'
 
 function readEngineToggle() {
   try {
@@ -139,7 +144,9 @@ export function BuilderPage() {
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
   const naming = useNaming()
   const chapters = useChapters(tree, naming)
-  const [navStyle, setNavStyle] = useChapterNavStyle()
+  // Engine symbols on the opponent's moves; cloud evaluations are fetched while the engine is on.
+  const { glyphOf, engineGlyph } = useEngineGlyphs(tree, engineOn)
+  const prep = usePreparedness(data, savedFilter, settings?.prepDepth ?? 6)
   const repId = data?.rep.id ?? ''
   const crossNote = useCallback(
     (parent: TreeNode, node: TreeNode) => crossEntering(cross, parent.key, node.key, repId).map((r) => r.rep.name),
@@ -258,21 +265,11 @@ export function BuilderPage() {
   // The chapter of the position on the board (the first one at the start, which only leads into chapters).
   const currentPath = path.slice(0, cursor)
   const chapter = chapters && (chapters.of(currentPath) ?? chapters.list[0])
-  const showList = navStyle === 'list' && !!chapters && chapters.list.length > 1
+  const showList = !!chapters && chapters.list.length > 1
   const selectChapter = (ch: Chapter) => goTo(ch.node.path)
-  const renameChapter = async (ch: Chapter) => {
-    const name = await promptDialog({
-      title: 'Rename chapter',
-      message: 'The name shows wherever this position comes up. Leave it empty to use the opening name.',
-      defaultValue: ch.custom ? ch.name : '',
-      placeholder: ch.custom ? undefined : ch.name,
-      confirmLabel: 'Rename',
-    })
-    if (name === null) return
-    await setPositionName(ch.nameKey, name)
-    // A name given from the chapter's first move would win over the new one.
-    if (ch.nameKey !== ch.node.key && naming?.custom(ch.node.key)) await setPositionName(ch.node.key, '')
-  }
+  const chapterScore = (ch: Chapter) =>
+    prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, start.moves.length, color)).score
+
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -355,11 +352,19 @@ export function BuilderPage() {
                   from {formatMoves(start.sans)}
                 </span>
               )}
-              <span className="ml-auto" />
-              <ChapterNavToggle style={navStyle} onChange={setNavStyle} />
             </div>
             <div className="max-h-[30vh] overflow-y-auto">
-              <ChapterList tree={tree} chapters={chapters} selected={chapter} onSelect={selectChapter} share={shareOf} />
+              <ChapterList
+                tree={tree}
+                chapters={chapters}
+                selected={chapter}
+                onSelect={selectChapter}
+                share={shareOf}
+                extra={(ch) => {
+                  const sc = chapterScore(ch)
+                  return sc !== undefined && <span className={scoreColor(sc)} title="Prepared">{pct(sc)}</span>
+                }}
+              />
             </div>
           </section>
         )}
@@ -368,16 +373,12 @@ export function BuilderPage() {
           <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
             {chapters && chapter ? (
               <ChapterStepper chapters={chapters} selected={chapter} onSelect={selectChapter}>
-                {navStyle === 'menu' ? (
-                  <ChapterMenu chapters={chapters} selected={chapter} onSelect={selectChapter} />
-                ) : (
-                  <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
-                    {chapter.title}
-                  </span>
-                )}
+                <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
+                  {chapter.title}
+                </span>
                 <button
                   className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
-                  onClick={() => renameChapter(chapter)}
+                  onClick={() => renameChapter(chapter, naming)}
                   aria-label="Rename chapter"
                   title="Rename chapter"
                 >
@@ -387,7 +388,6 @@ export function BuilderPage() {
             ) : (
               <span className="px-2 font-display text-[15px] font-medium">Lines</span>
             )}
-            {!showList && chapters && <ChapterNavToggle style={navStyle} onChange={setNavStyle} />}
           </div>
           <div data-tree-scroll className="p-2.5 md:max-h-[45vh] md:overflow-y-auto">
             {!tree.children.length ? (
@@ -403,10 +403,16 @@ export function BuilderPage() {
                   onJump={goTo}
                   share={shareOf}
                   crossNote={crossNote}
+                  glyphOf={glyphOf}
                 />
               )
             )}
           </div>
+          {chapter && tree.children.length > 0 && (
+            <div className="border-t border-line/70 px-3 py-2">
+              <ChapterTraining rep={rep} chapter={chapter} cards={data.cardMap} score={chapterScore(chapter)} compact />
+            </div>
+          )}
         </section>
       </div>
 
@@ -543,6 +549,7 @@ export function BuilderPage() {
           incoming={incoming}
           naming={naming}
           startsChapter={!!chapters?.startingAt(currentPath)}
+          engineGlyph={incoming && !incoming.byMe ? engineGlyph(incoming.fromKey, incoming.uci) : undefined}
         />
       </div>
     </div>
@@ -559,17 +566,28 @@ function Notes({
   incoming,
   naming,
   startsChapter,
+  engineGlyph,
 }: {
   positionKey: string
   incoming?: RepMove
   naming?: Naming
   /** The move to this position starts a chapter (as things stand). */
   startsChapter: boolean
+  /** Symbol the engine gives the move to this position. */
+  engineGlyph?: Glyph
 }) {
   // null = loaded but empty, undefined = still loading (so defaultValue is set once loaded).
   const note = useLiveQuery(() => db.positions.get(positionKey).then((n) => n ?? null), [positionKey])
   const move = useLiveQuery(() => (incoming ? db.moves.get(incoming.id).then((m) => m ?? null) : null), [incoming?.id])
-  const glyph = move?.glyph || undefined
+  // The symbol shown: the user's, else the engine's unless the user removed it.
+  const glyph = move?.glyph === '' ? undefined : move?.glyph || engineGlyph
+  const fromEngine = !!glyph && move?.glyph === undefined
+  const pickGlyph = (g: Glyph) => {
+    if (!incoming) return
+    // Removing the engine's symbol is remembered ('') so it doesn't come back.
+    if (g === glyph) return setMoveGlyph(incoming.id, g === engineGlyph ? '' : undefined)
+    return setMoveGlyph(incoming.id, g === engineGlyph ? undefined : g)
+  }
   const breakHere = note?.chapter
   const setBreak = (b: ChapterBreak | undefined) => setChapterBreak(positionKey, b)
   return (
@@ -583,7 +601,7 @@ function Notes({
             <button
               key={g}
               title={GLYPH_NAMES[g]}
-              onClick={() => setMoveGlyph(incoming.id, glyph === g ? undefined : g)}
+              onClick={() => pickGlyph(g)}
               className={`min-w-8 rounded-md border px-1.5 py-0.5 text-sm font-semibold transition ${
                 glyph === g ? `border-brass/70 bg-brass/12 ${GLYPH_TONE[g]}` : 'border-line text-muted hover:border-line-strong hover:text-ink'
               }`}
@@ -591,6 +609,10 @@ function Notes({
               {g}
             </button>
           ))}
+          {fromEngine && <span className="text-[11px] text-faint">from the engine</span>}
+          {move.glyph === '' && engineGlyph && (
+            <span className="text-[11px] text-faint">engine&rsquo;s {engineGlyph} hidden</span>
+          )}
         </div>
       )}
       {incoming && move !== undefined && (

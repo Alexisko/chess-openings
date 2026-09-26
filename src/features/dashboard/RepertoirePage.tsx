@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { ArrowLeft, BookIcon, TargetIcon, TrainIcon } from '../../components/icons'
+import { ChapterTraining } from '../../components/ChapterTraining'
+import { ArrowLeft, BookIcon, PencilIcon, TargetIcon, TrainIcon } from '../../components/icons'
 import { ColorDot, Notice, ScoreRing, Section, Toggle } from '../../components/ui'
 import {
   addLine,
@@ -18,7 +19,11 @@ import { formatMoves, replay } from '../../lib/chess/position'
 import { repStart } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
 import type { Gap } from '../../lib/prep/preparedness'
-import { usePreparedness, type PrepGap } from '../../lib/prep/usePreparedness'
+import { usePreparedness, type PrepGap, type PrepState } from '../../lib/prep/usePreparedness'
+import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
+import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapters'
+import { renameChapter } from '../../lib/openings/renameChapter'
+import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
 import { builderUrl, planUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
@@ -53,6 +58,10 @@ export function RepertoirePage() {
   const now = new Date()
   const due = data.cards.filter((c) => isDue(c.fsrs, now)).length
   const fresh = data.cards.filter((c) => isNew(c.fsrs)).length
+  const rename = async () => {
+    const name = await promptDialog({ title: 'Rename repertoire', defaultValue: rep.name, confirmLabel: 'Rename' })
+    if (name?.trim()) await renameRepertoire(rep.id, name.trim())
+  }
 
   return (
     <div className="stagger flex flex-col gap-5">
@@ -65,13 +74,13 @@ export function RepertoirePage() {
           <h1
             className="page-title cursor-text decoration-line-strong decoration-dashed underline-offset-4 hover:underline"
             title="Click to rename"
-            onClick={async () => {
-              const name = await promptDialog({ title: 'Rename repertoire', defaultValue: rep.name, confirmLabel: 'Rename' })
-              if (name?.trim()) await renameRepertoire(rep.id, name.trim())
-            }}
+            onClick={rename}
           >
             {rep.name}
           </h1>
+          <button className="-ml-1.5 rounded-md p-1.5 text-faint hover:bg-surface-3 hover:text-ink" onClick={rename} aria-label="Rename repertoire" title="Rename repertoire">
+            <PencilIcon size={16} />
+          </button>
           {repStart(rep).moves.length > 0 && (
             <span className="rounded-md bg-surface-2 px-2 py-0.5 font-display text-sm text-muted">
               {formatMoves(repStart(rep).sans)}
@@ -104,6 +113,8 @@ export function RepertoirePage() {
           )}
         </div>
       </div>
+
+      <ChapterSection data={data} prep={prep} />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 md:items-start">
         <Section title={`Preparedness, ${settings.prepDepth} moves deep`}>
@@ -189,6 +200,60 @@ export function RepertoirePage() {
         </button>
       </div>
     </div>
+  )
+}
+
+/** The repertoire's chapters, each with its preparedness and its own training. */
+function ChapterSection({ data, prep }: { data: RepertoireData; prep: PrepState | undefined }) {
+  const settings = useSettings()
+  const { tree, chapters, shareOf, naming } = useRepertoireChapters(data, settings?.explorerFilter)
+  if (!tree || !chapters || !tree.children.length) return null
+  const { rep } = data
+  const startLen = repStart(rep).moves.length
+  const score = (ch: Chapter) =>
+    prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, startLen, rep.color)).score
+  const depth = (ch: Chapter) => {
+    let d = 0
+    for (let p = ch.parent; p; p = p.parent) d++
+    return d
+  }
+  return (
+    <Section title={`Chapters · ${chapters.list.length}`}>
+      <ol className="-my-1 flex flex-col">
+        {chapters.list.map((ch, i) => {
+          const s = chapterShare(tree, ch, shareOf)
+          return (
+            <li
+              key={ch.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line/60 py-2 last:border-b-0"
+              style={{ paddingLeft: `${depth(ch) * 1.25}rem` }}
+            >
+              <div className="flex min-w-0 flex-1 basis-56 items-baseline gap-2">
+                <span className="w-5 shrink-0 text-right text-[11px] text-faint tabular-nums">{i + 1}</span>
+                <Link to={builderUrl(rep.id, ch.node.path)} className="min-w-0 truncate font-display text-[15px] hover:text-maple" title={ch.name}>
+                  {ch.title}
+                </Link>
+                <span className="shrink-0 text-xs text-faint">{firstMove(ch)}</span>
+                {s !== undefined && (
+                  <span className="shrink-0 text-[11px] text-faint tabular-nums" title="Share of games with this reply">
+                    {pct(s)}
+                  </span>
+                )}
+                <button
+                  className="shrink-0 rounded p-0.5 text-faint hover:bg-surface-3 hover:text-ink"
+                  onClick={() => renameChapter(ch, naming)}
+                  aria-label={`Rename ${ch.title}`}
+                  title="Rename chapter"
+                >
+                  <PencilIcon size={13} />
+                </button>
+              </div>
+              <ChapterTraining rep={rep} chapter={ch} cards={data.cardMap} score={score(ch)} compact />
+            </li>
+          )
+        })}
+      </ol>
+    </Section>
   )
 }
 
