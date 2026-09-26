@@ -3,23 +3,6 @@ import type { TreeNode } from '../lib/chess/tree'
 import { chapterShare, firstMove, type Chapter, type Chapters } from '../lib/openings/chapters'
 import { pct } from './format'
 import { NextIcon, PrevIcon } from './icons'
-import type { ChapterNavStyle } from '../lib/openings/useChapterNavStyle'
-
-export function ChapterNavToggle({ style, onChange }: { style: ChapterNavStyle; onChange: (s: ChapterNavStyle) => void }) {
-  return (
-    <span className="inline-flex shrink-0 overflow-hidden rounded-full border border-line text-[11px]" title="How to browse chapters">
-      {(['list', 'menu'] as const).map((s) => (
-        <button
-          key={s}
-          onClick={() => onChange(s)}
-          className={`px-2 py-0.5 transition ${style === s ? 'bg-brass/15 text-ink' : 'text-muted hover:text-ink'}`}
-        >
-          {s === 'list' ? 'List' : 'Menu'}
-        </button>
-      ))}
-    </span>
-  )
-}
 
 const depthOf = (ch: Chapter) => {
   let d = 0
@@ -107,28 +90,5 @@ export function ChapterStepper({
         <NextIcon size={15} />
       </button>
     </div>
-  )
-}
-
-/** A menu of all chapters (indented by depth), for the compact layout. */
-export function ChapterMenu({ chapters, selected, onSelect }: { chapters: Chapters; selected: Chapter; onSelect: (ch: Chapter) => void }) {
-  const i = chapters.list.indexOf(selected)
-  return (
-    <select
-      className="min-w-0 flex-1 truncate rounded-md border border-line bg-bg/70 py-1 pr-6 pl-2 font-display text-[15px] text-ink outline-none focus:border-brass/70"
-      value={selected.id}
-      onChange={(e) => {
-        const ch = chapters.list.find((c) => c.id === e.target.value)
-        if (ch) onSelect(ch)
-      }}
-      aria-label="Chapter"
-    >
-      {chapters.list.map((ch, j) => (
-        <option key={ch.id} value={ch.id}>
-          {`${' '.repeat(depthOf(ch))}${j + 1}. ${ch.title}${firstMove(ch) ? `  ·  ${firstMove(ch)}` : ''}`}
-        </option>
-      ))}
-      {i < 0 && <option value={selected.id}>{selected.title}</option>}
-    </select>
   )
 }

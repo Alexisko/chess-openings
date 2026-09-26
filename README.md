@@ -24,8 +24,8 @@ are against the moves real opponents play.
     Vienna Gambit"), a new chapter starts. Replies within the variation stay in the chapter as side lines,
     named by their sub-variation. The lines panel shows one chapter as a Lichess-style move list (main line in
     two columns, side lines on their own rows, deeper branches in parentheses, comments inline). Browse
-    chapters from an outline or a menu (List / Menu switch), rename them, or force / prevent a chapter start
-    on an opponent move. The Overview and the repertoire page are organised by chapter too.
+    chapters from the outline above it (or step through them with ‹ ›), rename them, or force / prevent a
+    chapter start on an opponent move. The Overview and the repertoire page are organised by chapter too.
   - Moves take symbols (!! ! !? ?! ? ??). The engine marks the opponent's mistakes and blunders itself (drop
     in winning chances, Lichess thresholds, from Lichess cloud evaluations); your own symbol wins.
   - The opening's name follows you along the line ("Vienna Game → Vienna Gambit"), here, in training and on
