@@ -2,19 +2,24 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
-import { MoveTree } from '../../components/MoveTree'
+import { ChapterLines } from '../../components/ChapterLines'
+import { ChapterList, ChapterMenu, ChapterNavToggle, ChapterStepper } from '../../components/ChapterNav'
+import { useChapterNavStyle } from '../../lib/openings/useChapterNavStyle'
 import { OpeningTrail } from '../../components/OpeningTrail'
-import { FirstIcon, LastIcon, NextIcon, PrevIcon } from '../../components/icons'
+import { FirstIcon, LastIcon, NextIcon, PencilIcon, PrevIcon } from '../../components/icons'
 import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
 import {
   addLine,
   MoveConflictError,
   previewRemoval,
   removeMoves,
+  setChapterBreak,
   setMoveComment,
+  setMoveGlyph,
+  setPositionName,
   setPositionNote,
 } from '../../db/repertoire'
-import { db } from '../../db/schema'
+import { db, type RepMove } from '../../db/schema'
 import { useSettings } from '../../db/settings'
 import { useCrossIndex, useRepertoire } from '../../db/useRepertoire'
 import { crossAt, crossEntering, crossMove, crossPath } from '../../lib/chess/cross'
@@ -23,6 +28,9 @@ import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turn
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
 import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type ExplorerFilter } from '../../lib/explorer'
+import { GLYPH_NAMES, GLYPH_TONE, GLYPHS } from '../../lib/chess/glyphs'
+import type { Chapter, ChapterBreak } from '../../lib/openings/chapters'
+import { useChapters, useNaming, type Naming } from '../../lib/openings/naming'
 import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
@@ -30,7 +38,7 @@ import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
 import { MoveInsight } from '../board/MoveInsight'
 import { builderUrl } from '../../lib/routes'
-import { confirmDialog } from '../../lib/dialog'
+import { confirmDialog, promptDialog } from '../../lib/dialog'
 
 function readEngineToggle() {
   try {
@@ -58,7 +66,6 @@ export function BuilderPage() {
   const [params, setParams] = useSearchParams()
   const start = data ? repStart(data.rep) : startOf()
   const rawPathStr = params.get('m') ?? ''
-  const focusStr = params.get('f') ?? ''
   // Lines always begin with the repertoire's starting moves; anything else opens at the start.
   const path = useMemo(() => {
     const p = rawPathStr ? rawPathStr.split(',') : []
@@ -72,13 +79,8 @@ export function BuilderPage() {
       return []
     }
   }, [path])
-  // Focus narrows the tree to one branch; it only applies while the line starts with it.
-  const focus = useMemo(() => {
-    const f = focusStr ? focusStr.split(',') : []
-    return f.length > start.moves.length && f.length <= played.length && startsWith(path, f) ? f : []
-  }, [focusStr, path, played.length, start.moves.length])
-  // The board never goes back before the repertoire's start (or the focus).
-  const floor = Math.max(start.moves.length, focus.length)
+  // The board never goes back before the repertoire's start.
+  const floor = start.moves.length
 
   // The cursor resets to the end of the line whenever the line itself changes.
   const [cursorState, setCursorState] = useState({ pathStr, cursor: played.length })
@@ -123,9 +125,8 @@ export function BuilderPage() {
   const evaluation = useEval(fen, engineOn)
   const loss = useMoveLoss(fen, mine?.uci, color, evaluation)
 
-  // Tree of the repertoire (from the focus) with the explored line grafted on.
-  const treeRoot = focus.length ? focus : start.moves
-  const rawTree = useMemo(() => (graph ? buildTree(graph, treeRoot, path) : null), [graph, treeRoot, path])
+  // Tree of the repertoire with the explored line grafted on.
+  const rawTree = useMemo(() => (graph ? buildTree(graph, start.moves, path) : null), [graph, start.moves, path])
   const branchKeys = useMemo(() => (rawTree ? opponentBranchKeys(rawTree) : []), [rawTree])
   const cached = useCachedExplorer(branchKeys, settings?.explorerFilter)
   const shareOf = useCallback(
@@ -133,27 +134,30 @@ export function BuilderPage() {
     [cached],
   )
   const tree = useMemo(() => (rawTree ? orderTree(rawTree, shareOf) : null), [rawTree, shareOf])
+  const naming = useNaming()
+  const chapters = useChapters(tree, naming)
+  const [navStyle, setNavStyle] = useChapterNavStyle()
   const repId = data?.rep.id ?? ''
   const crossNote = useCallback(
     (parent: TreeNode, node: TreeNode) => crossEntering(cross, parent.key, node.key, repId).map((r) => r.rep.name),
     [cross, repId],
   )
-  // Opening names along the line (cached explorer data; the current position is fetched above).
-  // Names are the same in both databases: take them from whichever has the position cached.
+  // Names along the line: the user's and the bundled opening names, else the explorer's while those load.
+  // Explorer names are the same in both databases: take them from whichever has the position cached.
   const panelNames = useOpeningNames(pathKeys, panelFilter)
   const savedNames = useOpeningNames(pathKeys, savedFilter)
-  const openings = useMemo(() => panelNames.map((o, i) => o ?? savedNames[i]), [panelNames, savedNames])
+  const openings = useMemo(
+    () => pathKeys.map((k, i) => (naming ? naming.display(k) : (panelNames[i] ?? savedNames[i]))),
+    [pathKeys, naming, panelNames, savedNames],
+  )
   const trail = useMemo(() => openingTrail(openings, cursor), [openings, cursor])
 
   const goTo = useCallback(
-    (uci: string[], newFocus: string[] = focus) => {
+    (uci: string[]) => {
       setStatus(undefined)
-      const next: Record<string, string> = {}
-      if (uci.length) next.m = uci.join(',')
-      if (newFocus.length) next.f = newFocus.join(',')
-      setParams(next, { replace: true })
+      setParams(uci.length ? { m: uci.join(',') } : {}, { replace: true })
     },
-    [setParams, focus],
+    [setParams],
   )
 
   const play = (uci: string) => {
@@ -248,8 +252,24 @@ export function BuilderPage() {
     if (move && move.uci !== mine?.uci && !arrows.some((a) => a.to === squaresOf(fen, move.uci).to))
       arrows.push({ ...squaresOf(fen, move.uci), brush: 'paleBlue' })
   if (threatArrow?.fen === fen) arrows.push(threatArrow.arrow)
-  const focusSans = played.slice(0, focus.length).map((p) => p.san)
-  const focusName = focus.length ? openingTrail(openings, focus.length).at(-1)?.opening.name : undefined
+  // The chapter of the position on the board (the first one at the start, which only leads into chapters).
+  const currentPath = path.slice(0, cursor)
+  const chapter = chapters && (chapters.of(currentPath) ?? chapters.list[0])
+  const showList = navStyle === 'list' && !!chapters && chapters.list.length > 1
+  const selectChapter = (ch: Chapter) => goTo(ch.node.path)
+  const renameChapter = async (ch: Chapter) => {
+    const name = await promptDialog({
+      title: 'Rename chapter',
+      message: 'The name shows wherever this position comes up. Leave it empty to use the opening name.',
+      defaultValue: ch.custom ? ch.name : '',
+      placeholder: ch.custom ? undefined : ch.name,
+      confirmLabel: 'Rename',
+    })
+    if (name === null) return
+    await setPositionName(ch.nameKey, name)
+    // A name given from the chapter's first move would win over the new one.
+    if (ch.nameKey !== ch.node.key && naming?.custom(ch.node.key)) await setPositionName(ch.node.key, '')
+  }
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -323,43 +343,65 @@ export function BuilderPage() {
           </div>
         )}
 
-        <section className="card">
-          <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
-            {focus.length ? (
-              <>
-                <span className="eyebrow">Focus</span>
-                <span className="truncate font-medium" title={focusName}>
-                  {focusName ?? formatMoves(focusSans)}
+        {showList && chapters && chapter && (
+          <section className="card">
+            <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
+              <span className="shrink-0 font-display text-[15px] font-medium">Chapters</span>
+              {start.moves.length > 0 && (
+                <span className="truncate text-muted" title="The repertoire starts here">
+                  from {formatMoves(start.sans)}
                 </span>
-                <button className="chip ml-auto shrink-0 py-0.5" onClick={() => goTo(path, [])}>
-                  Show whole repertoire
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="shrink-0 font-display text-[15px] font-medium">Lines</span>
-                {start.moves.length > 0 && (
-                  <span className="truncate text-muted" title="The repertoire starts here">
-                    from {formatMoves(start.sans)}
+              )}
+              <span className="ml-auto" />
+              <ChapterNavToggle style={navStyle} onChange={setNavStyle} />
+            </div>
+            <div className="max-h-[30vh] overflow-y-auto">
+              <ChapterList tree={tree} chapters={chapters} selected={chapter} onSelect={selectChapter} share={shareOf} />
+            </div>
+          </section>
+        )}
+
+        <section className="card">
+          <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
+            {chapters && chapter ? (
+              <ChapterStepper chapters={chapters} selected={chapter} onSelect={selectChapter}>
+                {navStyle === 'menu' ? (
+                  <ChapterMenu chapters={chapters} selected={chapter} onSelect={selectChapter} />
+                ) : (
+                  <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
+                    {chapter.title}
                   </span>
                 )}
-                {cursor > start.moves.length && (
-                  <button
-                    className="chip ml-auto shrink-0 py-0.5"
-                    onClick={() => goTo(path, path.slice(0, cursor))}
-                    title="Show only the lines from this position"
-                  >
-                    Focus here
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          <div data-tree-scroll className="px-3 py-2.5 md:max-h-[40vh] md:overflow-y-auto">
-            {tree.children.length ? (
-              <MoveTree root={tree} current={path.slice(0, cursor)} onJump={(p) => goTo(p)} share={shareOf} crossNote={crossNote} />
+                <button
+                  className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
+                  onClick={() => renameChapter(chapter)}
+                  aria-label="Rename chapter"
+                  title="Rename chapter"
+                >
+                  <PencilIcon size={14} />
+                </button>
+              </ChapterStepper>
             ) : (
-              <p className="text-sm text-muted">Play a move on the board or pick one from the explorer.</p>
+              <span className="px-2 font-display text-[15px] font-medium">Lines</span>
+            )}
+            {!showList && chapters && <ChapterNavToggle style={navStyle} onChange={setNavStyle} />}
+          </div>
+          <div data-tree-scroll className="p-2.5 md:max-h-[45vh] md:overflow-y-auto">
+            {!tree.children.length ? (
+              <p className="px-1 text-sm text-muted">Play a move on the board or pick one from the explorer.</p>
+            ) : (
+              chapters &&
+              chapter && (
+                <ChapterLines
+                  tree={tree}
+                  chapters={chapters}
+                  chapter={chapter}
+                  current={currentPath}
+                  onJump={goTo}
+                  share={shareOf}
+                  crossNote={crossNote}
+                />
+              )
             )}
           </div>
         </section>
@@ -493,7 +535,12 @@ export function BuilderPage() {
           )}
         </Section>
 
-        <Notes positionKey={key} incomingId={incoming?.id} incomingSan={incoming?.san} />
+        <Notes
+          positionKey={key}
+          incoming={incoming}
+          naming={naming}
+          startsChapter={!!chapters?.startingAt(currentPath)}
+        />
       </div>
     </div>
   )
@@ -504,34 +551,98 @@ function squaresOf(fen: string, uci: string) {
   return { from: sq?.[0] ?? '', to: sq?.[1] ?? '' }
 }
 
-function Notes({ positionKey, incomingId, incomingSan }: { positionKey: string; incomingId?: string; incomingSan?: string }) {
+function Notes({
+  positionKey,
+  incoming,
+  naming,
+  startsChapter,
+}: {
+  positionKey: string
+  incoming?: RepMove
+  naming?: Naming
+  /** The move to this position starts a chapter (as things stand). */
+  startsChapter: boolean
+}) {
   // null = loaded but empty, undefined = still loading (so defaultValue is set once loaded).
   const note = useLiveQuery(() => db.positions.get(positionKey).then((n) => n ?? null), [positionKey])
-  const move = useLiveQuery(() => (incomingId ? db.moves.get(incomingId).then((m) => m ?? null) : null), [incomingId])
+  const move = useLiveQuery(() => (incoming ? db.moves.get(incoming.id).then((m) => m ?? null) : null), [incoming?.id])
+  const glyph = move?.glyph || undefined
+  const breakHere = note?.chapter
+  const setBreak = (b: ChapterBreak | undefined) => setChapterBreak(positionKey, b)
   return (
-    <Section title="Ideas & notes">
+    <Section title="Notes">
+      {incoming && move && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs text-muted">
+            Symbol for <span className="font-semibold text-ink">{incoming.san}</span>
+          </span>
+          {GLYPHS.map((g) => (
+            <button
+              key={g}
+              title={GLYPH_NAMES[g]}
+              onClick={() => setMoveGlyph(incoming.id, glyph === g ? undefined : g)}
+              className={`min-w-8 rounded-md border px-1.5 py-0.5 text-sm font-semibold transition ${
+                glyph === g ? `border-brass/70 bg-brass/12 ${GLYPH_TONE[g]}` : 'border-line text-muted hover:border-line-strong hover:text-ink'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+      {incoming && move !== undefined && (
+        <>
+          <label className="mb-1.5 block text-xs text-muted">
+            Why <span className="font-semibold text-ink">{incoming.san}</span>? Shown in the lines and after you play it in training.
+          </label>
+          <textarea
+            key={`m-${incoming.id}`}
+            className="input mb-3 h-16 w-full resize-y leading-relaxed"
+            defaultValue={move?.comment ?? ''}
+            onBlur={(e) => e.target.value !== (move?.comment ?? '') && setMoveComment(incoming.id, e.target.value)}
+          />
+        </>
+      )}
+      {incoming && note !== undefined && (
+        <div className="mb-3 flex flex-col gap-1.5">
+          <label className="text-xs text-muted" htmlFor={`name-${positionKey}`}>
+            Name of the line after {incoming.san} (chapters, side lines and the name above the board)
+          </label>
+          <input
+            id={`name-${positionKey}`}
+            key={`n-${positionKey}`}
+            className="input"
+            defaultValue={note?.name ?? ''}
+            placeholder={naming?.opening(positionKey)?.name ?? 'e.g. Hamppe line'}
+            onBlur={(e) => e.target.value.trim() !== (note?.name ?? '') && setPositionName(positionKey, e.target.value)}
+          />
+          {!incoming.byMe && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="mr-1 text-muted">Chapter</span>
+              {(
+                [
+                  [undefined, `Automatic${breakHere ? '' : startsChapter ? ' (new chapter)' : ' (same chapter)'}`],
+                  ['split', 'New chapter'],
+                  ['merge', 'Same chapter'],
+                ] as const
+              ).map(([b, label]) => (
+                <button key={label} className={`chip py-0.5 ${breakHere === b ? 'chip-on' : ''}`} onClick={() => setBreak(b)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <label className="mb-1.5 block text-xs text-muted">Plans and ideas in this position (shared by all repertoires)</label>
       {note !== undefined && (
         <textarea
           key={`p-${positionKey}`}
-          className="input mb-3 h-20 w-full resize-y leading-relaxed"
+          className="input h-20 w-full resize-y leading-relaxed"
           defaultValue={note?.note ?? ''}
           placeholder="e.g. Aim for c4–c5 and a queenside pawn storm; the light-squared bishop belongs on d3."
           onBlur={(e) => e.target.value !== (note?.note ?? '') && setPositionNote(positionKey, e.target.value)}
         />
-      )}
-      {incomingId && move !== undefined && (
-        <>
-          <label className="mb-1.5 block text-xs text-muted">
-            Why <span className="font-semibold text-ink">{incomingSan}</span>? Shown after you play it in training.
-          </label>
-          <textarea
-            key={`m-${incomingId}`}
-            className="input h-16 w-full resize-y leading-relaxed"
-            defaultValue={move?.comment ?? ''}
-            onBlur={(e) => e.target.value !== (move?.comment ?? '') && setMoveComment(incomingId, e.target.value)}
-          />
-        </>
       )}
     </Section>
   )

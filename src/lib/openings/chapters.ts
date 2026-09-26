@@ -1,5 +1,5 @@
 import { positionKey, replay } from '../chess/position'
-import { moveNumber, type TreeNode } from '../chess/tree'
+import { findNode, moveNumber, type TreeNode } from '../chess/tree'
 import { shortName, variationOf, type OpeningName } from './names'
 
 /**
@@ -33,6 +33,8 @@ export interface Chapter {
   /** The name without what it shares with the chapter above ("Vienna Gambit"). */
   title: string
   custom: boolean
+  /** Position the chapter is named after (after the owner's reply); a new name for the chapter goes here. */
+  nameKey: string
   /** The standard opening the chapter is named after, if any. */
   opening?: OpeningName
   parent?: Chapter
@@ -72,15 +74,15 @@ export function buildChapters(root: TreeNode, src: ChapterSources): Chapters {
   for (const m of replay(root.path)) rootOpening = src.opening(positionKey(m.fen)) ?? rootOpening
 
   /**
-   * The opening after a move and the owner's reply to it: names often apply
-   * one move later (2...Nf6 3.f4 is the Vienna Gambit), and it's the reply
-   * that defines the line you learn.
+   * Lines are named after the position following a move and the owner's reply
+   * to it: names often apply one move later (2...Nf6 3.f4 is the Vienna
+   * Gambit), and it's the reply that defines the line you learn.
    */
-  const ahead = (node: TreeNode, opening: OpeningName | undefined) => {
-    const own = src.opening(node.key) ?? opening
-    const reply = node.byMe ? undefined : node.children.find((c) => c.byMe)
-    return (reply && src.opening(reply.key)) || own
-  }
+  const namedAt = (node: TreeNode) => (node.byMe ? undefined : node.children.find((c) => c.byMe)) ?? node
+  const ahead = (node: TreeNode, opening: OpeningName | undefined) =>
+    src.opening(namedAt(node).key) ?? src.opening(node.key) ?? opening
+  /** The user's name for a line: given to the position it's named after, or to its first move's. */
+  const customName = (node: TreeNode) => src.custom?.(namedAt(node).key) ?? src.custom?.(node.key)
 
   const byNode = new Map<string, Chapter>()
   const starting = new Map<string, Chapter>()
@@ -88,7 +90,19 @@ export function buildChapters(root: TreeNode, src: ChapterSources): Chapters {
   const list: Chapter[] = []
 
   const open = (node: TreeNode, parent: Chapter | undefined, opening: OpeningName | undefined): Chapter => {
-    const ch: Chapter = { id: pathId(node.path), node, name: '', title: '', custom: false, opening, parent, children: [], nodes: [], lines: 0 }
+    const ch: Chapter = {
+      id: pathId(node.path),
+      node,
+      name: '',
+      title: '',
+      custom: false,
+      nameKey: namedAt(node).key,
+      opening,
+      parent,
+      children: [],
+      nodes: [],
+      lines: 0,
+    }
     parent?.children.push(ch)
     list.push(ch)
     return ch
@@ -144,7 +158,7 @@ export function buildChapters(root: TreeNode, src: ChapterSources): Chapters {
     names = group.map((ch, i) => (clashes(i) && ch.opening ? ch.opening.name : names[i]))
     names = group.map((ch, i) => (clashes(i) ? `${names[i]} (${moveLabel(ch.node)})` : names[i]))
     group.forEach((ch, i) => {
-      const custom = src.custom?.(ch.node.key)
+      const custom = customName(ch.node)
       ch.custom = !!custom
       ch.name = custom || names[i]
       ch.title = custom || titleOf(i)
@@ -155,7 +169,7 @@ export function buildChapters(root: TreeNode, src: ChapterSources): Chapters {
 
   const lineNames = new Map<string, LineName>()
   for (const { node, before } of sideLines) {
-    const custom = src.custom?.(node.key)
+    const custom = customName(node)
     const opening = ahead(node, before)
     if (custom) lineNames.set(pathId(node.path), { name: custom, custom: true })
     else if (opening && opening.name !== before?.name)
@@ -174,4 +188,14 @@ export function buildChapters(root: TreeNode, src: ChapterSources): Chapters {
 /** Nodes of a chapter, with those of its sub-chapters when `deep`. */
 export function chapterNodes(ch: Chapter, deep = true): TreeNode[] {
   return deep ? [...ch.nodes, ...ch.children.flatMap((c) => chapterNodes(c))] : ch.nodes
+}
+
+/** The move a chapter starts with ("2...Nf6"), empty for the first chapter. */
+export const firstMove = (ch: Chapter) => (ch.node.uci ? moveLabel(ch.node) : '')
+
+/** Share of games of the move that starts a chapter, among the replies there. */
+export function chapterShare(tree: TreeNode, ch: Chapter, share?: (parent: TreeNode, child: TreeNode) => number | undefined) {
+  if (!share || !ch.node.uci || ch.node.byMe) return undefined
+  const parent = findNode(tree, ch.node.path.slice(0, -1))
+  return parent && parent.children.length > 1 ? share(parent, ch.node) : undefined
 }

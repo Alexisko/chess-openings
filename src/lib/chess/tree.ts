@@ -1,3 +1,4 @@
+import type { Glyph } from './glyphs'
 import type { RepGraph } from './graph'
 import { playUci, positionKey, START_FEN, turnOf } from './position'
 
@@ -23,6 +24,8 @@ export interface TreeNode {
   /** The move reaches a position that the repertoire continues elsewhere. */
   transposition: boolean
   comment: string
+  /** Symbol set by the user ('' clears the engine's). */
+  glyph?: Glyph | ''
   children: TreeNode[]
 }
 
@@ -59,6 +62,7 @@ export function buildTree(g: RepGraph, rootPath: string[] = [], draft: string[] 
         draft: false,
         transposition: g.transpositions.has(m.id),
         comment: m.comment,
+        glyph: m.glyph,
         children: [],
       }
       node.children.push(child)

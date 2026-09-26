@@ -11,6 +11,16 @@ export const GLYPH_NAMES: Record<Glyph, string> = {
   '??': 'Blunder',
 }
 
+/** Text colour of each symbol (theme tokens). */
+export const GLYPH_TONE: Record<Glyph, string> = {
+  '!!': 'text-accent',
+  '!': 'text-accent',
+  '!?': 'text-info',
+  '?!': 'text-warn',
+  '?': 'text-warn',
+  '??': 'text-bad',
+}
+
 /** PGN Numeric Annotation Glyphs. */
 const NAGS: Record<Glyph, number> = { '!': 1, '?': 2, '!!': 3, '??': 4, '!?': 5, '?!': 6 }
 
