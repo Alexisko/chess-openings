@@ -20,9 +20,18 @@ are against the moves real opponents play.
   - The engine warns when a repertoire move is clearly worse than its best move.
   - Transpositions are detected and cut.
   - Every position can have notes on its ideas and plans.
+  - **Chapters**, like a Lichess study: where the opponent's reply leads to another variation ("Vienna Game →
+    Vienna Gambit"), a new chapter starts. Replies within the variation stay in the chapter as side lines,
+    named by their sub-variation. The lines panel shows one chapter as a Lichess-style move list (main line in
+    two columns, side lines on their own rows, deeper branches in parentheses, comments inline). Browse
+    chapters from an outline or a menu (List / Menu switch), rename them, or force / prevent a chapter start
+    on an opponent move. The Overview and the repertoire page are organised by chapter too.
+  - Moves take symbols (!! ! !? ?! ? ??). The engine marks the opponent's mistakes and blunders itself (drop
+    in winning chances, Lichess thresholds, from Lichess cloud evaluations); your own symbol wins.
   - The opening's name follows you along the line ("Vienna Game → Vienna Gambit"), here, in training and on
-    the overview. Names come from explorer data already cached; a position without its own name keeps the one
-    before it. Training only names positions already on the board.
+    the overview. Names are the Lichess opening names, bundled in the app, or the names you give lines; a
+    position without its own name keeps the one before it. Training only names positions already on the
+    board.
   - "What 3.f4 does" explains the last move. Stockfish plays a free extra move for the side that just moved
     (the side to move flipped, skipped after a check): if that gains more than a spare tempo, the move
     threatens it ("Threatens fxe5 +4.4"); otherwise it's shown as the next idea. Hover the move to see it
@@ -33,6 +42,8 @@ are against the moves real opponents play.
   - *Review* replays lines from the start and covers every due card with as few lines as possible.
   - *Drill* starts two moves before your weakest positions.
   - Any move other than your repertoire move counts as wrong.
+  - A chapter can be trained on its own (Review / Learn / Drill from the builder or the repertoire page).
+  - After an opponent move marked ? or ??, training asks you to find the move that punishes it.
   - *Explain moves* (a switch next to the score, remembered per device) pauses after each correct move to show
     what it threatens and does, until you continue. It's never shown once you're answering again, where it
     could give the next move away.

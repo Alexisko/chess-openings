@@ -27,12 +27,12 @@ export function ChapterTraining({
   const own = [...keys].map((k) => cards.get(k)).filter((c) => c !== undefined)
   const due = own.filter((c) => isDue(c, now)).length
   const fresh = own.filter((c) => isNew(c)).length
-  const btn = `btn-ghost ${compact ? 'px-2.5 py-1 text-xs' : ''}`
+  const btn = `btn-ghost ${compact ? 'gap-1.5 px-2 py-1 text-xs' : ''}`
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={`flex flex-wrap items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
       {score !== undefined && (
         <span className="mr-1 text-xs text-muted" title="Preparedness from the start of this chapter">
-          Prepared <span className={`font-semibold tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>
+          {compact ? 'Prep' : 'Prepared'} <span className={`font-semibold tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>
         </span>
       )}
       <Link className={`${btn} ${due ? '' : 'pointer-events-none opacity-40'}`} to={trainUrl('review', rep.id, chapter)}>

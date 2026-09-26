@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
-import { TargetIcon } from '../../components/icons'
+import { PencilIcon, TargetIcon } from '../../components/icons'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import { ColorDot, Notice } from '../../components/ui'
 import { findOverlaps, previewStartChange, setRepertoireStart } from '../../db/repertoire'
@@ -14,7 +14,10 @@ import { parseMoves, repStart } from '../../lib/chess/start'
 import { allKeys, buildTree, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { AuthRequiredError, moveShare, useCachedExplorer, type ExplorerData } from '../../lib/explorer'
 import { openingTrail, type OpeningName } from '../../lib/openings/names'
-import { preparedness } from '../../lib/prep/preparedness'
+import { firstMove, type Chapter, type Chapters } from '../../lib/openings/chapters'
+import { useChapters, useNaming } from '../../lib/openings/naming'
+import { renameChapter } from '../../lib/openings/renameChapter'
+import { ownMovesIn, preparedness, preparednessFrom } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl } from '../../lib/routes'
 
@@ -41,22 +44,27 @@ function unpreparedAt(node: TreeNode, explorer: Map<string, ExplorerData>): Row[
     .filter((u) => u.share >= MIN_UNPREPARED_SHARE && !node.children.some((c) => c.uci === u.uci))
 }
 
-/** Groups the tree into rows: each row is a run of moves up to the next branch point. */
-function toRows(start: TreeNode, explorer: Map<string, ExplorerData>): Row[] {
-  return start.children.map((first) => {
-    const nodes = [first]
-    let last = first
-    while (last.children.length === 1 && !last.transposition) {
-      last = last.children[0]
-      nodes.push(last)
-    }
-    // Positions in this run where the opponent is to move (after your move),
-    // except where the line simply ends: that is flagged as "ends at move N".
-    const unprepared = nodes
-      .filter((n) => n.byMe && !n.transposition && n.children.length > 0)
-      .flatMap((n) => unpreparedAt(n, explorer))
-    return { first, last, nodes, children: toRows(last, explorer), unprepared }
-  })
+/**
+ * Groups the tree into rows: each row is a run of moves up to the next branch
+ * point. Moves that start a chapter are left out (the chapter lists them).
+ */
+function toRows(start: TreeNode, explorer: Map<string, ExplorerData>, chapters?: Chapters): Row[] {
+  return start.children.filter((c) => !chapters?.startingAt(c.path)).map((first) => runFrom(first, explorer, chapters))
+}
+
+function runFrom(first: TreeNode, explorer: Map<string, ExplorerData>, chapters?: Chapters): Row {
+  const nodes = [first]
+  let last = first
+  while (last.children.length === 1 && !last.transposition && !chapters?.startingAt(last.children[0].path)) {
+    last = last.children[0]
+    nodes.push(last)
+  }
+  // Positions in this run where the opponent is to move (after your move),
+  // except where the line simply ends: that is flagged as "ends at move N".
+  const unprepared = nodes
+    .filter((n) => n.byMe && !n.transposition && n.children.length > 0)
+    .flatMap((n) => unpreparedAt(n, explorer))
+  return { first, last, nodes, children: toRows(last, explorer, chapters), unprepared }
 }
 
 export function OverviewPage() {
@@ -82,17 +90,20 @@ export function OverviewPage() {
     () => (rawTree ? orderTree(rawTree, (p, c) => moveShare(explorer.get(p.key), c.uci)) : null),
     [rawTree, explorer],
   )
-  const rows = useMemo(() => (tree ? toRows(tree, explorer) : []), [tree, explorer])
+  const naming = useNaming()
+  const chapters = useChapters(tree, naming)
+  // With a single chapter, the outline is just the lines.
+  const grouped = chapters && chapters.list.length > 1 ? chapters : undefined
+  const rows = useMemo(() => (tree ? toRows(tree, explorer, grouped) : []), [tree, explorer, grouped])
   // When the opponent moves first from the start (e.g. Black repertoires), list unanswered replies at the top.
   const rootUnprepared = useMemo(
     () => (tree && data && turnOf(tree.fen) !== data.rep.color ? unpreparedAt(tree, explorer) : []),
     [tree, explorer, data],
   )
 
-  const startName = useMemo(
-    () => openingTrail(startKeys.map((k) => explorer.get(k)?.opening)).at(-1)?.opening,
-    [startKeys, explorer],
-  )
+  // Your names for positions first, then the opening names (the explorer's while those load).
+  const nameAt = useCallback((key: string) => (naming ? naming.display(key) : explorer.get(key)?.opening), [naming, explorer])
+  const startName = useMemo(() => openingTrail(startKeys.map(nameAt)).at(-1)?.opening, [startKeys, nameAt])
 
   const [toggled, setToggled] = useState<Set<string>>(new Set())
   const [startMsg, setStartMsg] = useState<string>()
@@ -211,11 +222,82 @@ export function OverviewPage() {
     )
   }
 
-  /** `before`: the opening name of the position the row starts from. */
-  const renderRow = (row: Row, level: number, before: OpeningName | undefined): ReactNode => {
+  const toggle = (id: string) =>
+    setToggled((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  /** The name of the position before a node. */
+  const nameBefore = (node: TreeNode) => {
+    let name = startName
+    let cur: TreeNode | undefined = tree
+    for (const uci of fromStart(node).slice(0, -1)) {
+      cur = cur?.children.find((c) => c.uci === uci)
+      if (cur) name = nameAt(cur.key) ?? name
+    }
+    return name
+  }
+
+  /** A chapter: a heading row, then its lines, then its sub-chapters. */
+  const renderChapter = (ch: Chapter, level: number): ReactNode => {
+    const chId = `chapter:${ch.id}`
+    const open = !toggled.has(chId)
+    const atRoot = ch.node === tree
+    const r = reach(ch.node)
+    const p = prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, tree.path.length, rep.color)).score
+    return (
+      <li key={chId}>
+        <div
+          className="grid grid-cols-[minmax(0,1fr)_3.5rem_3.5rem_1.75rem] items-center gap-2 rounded-md border-t border-line/60 py-2 pr-1"
+          style={{ paddingLeft: `${level * 1.1 + 0.25}rem` }}
+        >
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <button className="w-4 shrink-0 text-xs text-muted hover:text-ink" onClick={() => toggle(chId)} aria-label={open ? 'Collapse' : 'Expand'}>
+              {open ? '▾' : '▸'}
+            </button>
+            <span className="min-w-0 truncate font-display text-base font-medium text-brass" title={ch.name}>
+              {ch.title}
+            </span>
+            <span className="shrink-0 text-xs text-faint">{firstMove(ch)}</span>
+            <button
+              className="shrink-0 self-center rounded p-0.5 text-faint hover:bg-surface-3 hover:text-ink"
+              onClick={() => renameChapter(ch, naming)}
+              aria-label={`Rename ${ch.title}`}
+              title="Rename chapter"
+            >
+              <PencilIcon size={12} />
+            </button>
+          </div>
+          <span className="text-right text-xs text-muted tabular-nums">{r === undefined ? '–' : pct(r, r < 0.1 ? 1 : 0)}</span>
+          <span className={`text-right text-xs font-semibold tabular-nums ${p === undefined ? 'text-muted' : scoreColor(p)}`}>
+            {p === undefined ? '–' : pct(p)}
+          </span>
+          <Link to={builderUrl(rep.id, ch.node.path)} className="grid place-items-center text-faint hover:text-brass" title="Open this chapter in the builder">
+            <TargetIcon size={15} />
+          </Link>
+        </div>
+        {open && (
+          <ul>
+            {atRoot && rootUnprepared.map((u) => renderUnprepared(u, level + 1))}
+            {(atRoot ? rows : [runFrom(ch.node, explorer, grouped)]).map((row) => renderRow(row, level + 1, nameBefore(row.first), level + 1))}
+            {ch.children.map((c) => renderChapter(c, level + 1))}
+          </ul>
+        )}
+      </li>
+    )
+  }
+
+  /**
+   * `before`: the opening name of the position the row starts from. `base`:
+   * the level the row's chapter starts at (rows fold by their depth in it).
+   */
+  const renderRow = (row: Row, level: number, before: OpeningName | undefined, base = 0): ReactNode => {
     const rowId = row.first.path.join(',')
     const hasKids = row.children.length > 0 || row.unprepared.length > 0
-    const defaultOpen = level < 2
+    const defaultOpen = level - base < 2
     const open = hasKids && (toggled.has(rowId) ? !defaultOpen : defaultOpen)
     const r = reach(row.first)
     const p = rowPrep(row)
@@ -231,7 +313,7 @@ export function OverviewPage() {
     const elsewhere = continues.length ? continues.map((ref) => ({ ref, key: row.last.key })) : [...joins.values()]
     const endsEarly = !row.last.children.length && !row.last.transposition && !continues.length && own < depth
     // Names that start within this row, after the one it inherits.
-    const trail = openingTrail([before, ...row.nodes.map((n) => explorer.get(n.key)?.opening)])
+    const trail = openingTrail([before, ...row.nodes.map((n) => nameAt(n.key))])
     const named = trail.length > 0 && trail.at(-1)!.ply > 0
     return (
       <li key={rowId}>
@@ -242,14 +324,7 @@ export function OverviewPage() {
           <div className="flex min-w-0 items-start gap-1">
             <button
               className={`w-4 shrink-0 text-xs leading-5 text-muted ${hasKids ? 'hover:text-ink' : 'invisible'}`}
-              onClick={() =>
-                setToggled((s) => {
-                  const next = new Set(s)
-                  if (next.has(rowId)) next.delete(rowId)
-                  else next.add(rowId)
-                  return next
-                })
-              }
+              onClick={() => toggle(rowId)}
               aria-label={open ? 'Collapse' : 'Expand'}
             >
               {open ? '▾' : '▸'}
@@ -302,7 +377,7 @@ export function OverviewPage() {
         {open && (
           <ul>
             {row.unprepared.map((u) => renderUnprepared(u, level + 1))}
-            {row.children.map((c) => renderRow(c, level + 1, trail.at(-1)?.opening))}
+            {row.children.map((c) => renderRow(c, level + 1, trail.at(-1)?.opening, base))}
           </ul>
         )}
       </li>
@@ -366,19 +441,25 @@ export function OverviewPage() {
           </span>
           <span />
         </div>
-        {rows.length ? (
+        {!tree.children.length ? (
+          <p className="p-2 text-sm text-muted">This repertoire is empty. Add lines in the builder.</p>
+        ) : grouped ? (
+          <ul>
+            {!grouped.of(tree.path) && rootUnprepared.map((u) => renderUnprepared(u, 0))}
+            {grouped.roots.map((ch) => renderChapter(ch, 0))}
+          </ul>
+        ) : (
           <ul>
             {rootUnprepared.map((u) => renderUnprepared(u, 0))}
             {rows.map((r) => renderRow(r, 0, startName))}
           </ul>
-        ) : (
-          <p className="p-2 text-sm text-muted">This repertoire is empty. Add lines in the builder.</p>
         )}
       </section>
       <p className="text-xs leading-relaxed text-faint">
         Games = share of games from the repertoire's starting position (with your explorer filter) that reach the line.
         Prep = chance to stay in moves you remember until you are {depth} moves deep.{' '}
-        <TargetIcon size={12} className="inline align-[-2px]" /> opens the line in the builder, focused on that branch.
+        <TargetIcon size={12} className="inline align-[-2px]" /> opens the line in the builder. Chapters start where the
+        opponent's reply leads to another variation.
       </p>
     </div>
   )

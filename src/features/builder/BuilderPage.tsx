@@ -34,6 +34,7 @@ import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type Explor
 import { GLYPH_NAMES, GLYPH_TONE, GLYPHS, type Glyph } from '../../lib/chess/glyphs'
 import type { Chapter, ChapterBreak } from '../../lib/openings/chapters'
 import { useChapters, useNaming, type Naming } from '../../lib/openings/naming'
+import { renameChapter } from '../../lib/openings/renameChapter'
 import { openingTrail } from '../../lib/openings/names'
 import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } from '../../lib/chess/tree'
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
@@ -43,7 +44,7 @@ import { MoveInsight } from '../board/MoveInsight'
 import { builderUrl } from '../../lib/routes'
 import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
-import { confirmDialog, promptDialog } from '../../lib/dialog'
+import { confirmDialog } from '../../lib/dialog'
 
 function readEngineToggle() {
   try {
@@ -267,19 +268,7 @@ export function BuilderPage() {
   const selectChapter = (ch: Chapter) => goTo(ch.node.path)
   const chapterScore = (ch: Chapter) =>
     prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, start.moves.length, color)).score
-  const renameChapter = async (ch: Chapter) => {
-    const name = await promptDialog({
-      title: 'Rename chapter',
-      message: 'The name shows wherever this position comes up. Leave it empty to use the opening name.',
-      defaultValue: ch.custom ? ch.name : '',
-      placeholder: ch.custom ? undefined : ch.name,
-      confirmLabel: 'Rename',
-    })
-    if (name === null) return
-    await setPositionName(ch.nameKey, name)
-    // A name given from the chapter's first move would win over the new one.
-    if (ch.nameKey !== ch.node.key && naming?.custom(ch.node.key)) await setPositionName(ch.node.key, '')
-  }
+
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
@@ -394,7 +383,7 @@ export function BuilderPage() {
                 )}
                 <button
                   className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
-                  onClick={() => renameChapter(chapter)}
+                  onClick={() => renameChapter(chapter, naming)}
                   aria-label="Rename chapter"
                   title="Rename chapter"
                 >
