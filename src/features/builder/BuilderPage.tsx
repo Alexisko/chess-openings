@@ -24,7 +24,7 @@ import { useSettings } from '../../db/settings'
 import { useCrossIndex, useRepertoire } from '../../db/useRepertoire'
 import { crossAt, crossEntering, crossMove, crossPath } from '../../lib/chess/cross'
 import { myMove, pathTo } from '../../lib/chess/graph'
-import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf } from '../../lib/chess/position'
+import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, turnOf, type PlayedMove } from '../../lib/chess/position'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
 import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type ExplorerFilter } from '../../lib/explorer'
@@ -67,18 +67,21 @@ export function BuilderPage() {
   const start = data ? repStart(data.rep) : startOf()
   const rawPathStr = params.get('m') ?? ''
   // Lines always begin with the repertoire's starting moves; anything else opens at the start.
-  const path = useMemo(() => {
+  // A line that turns illegal part-way is cut at its first illegal move.
+  const { path, played } = useMemo(() => {
     const p = rawPathStr ? rawPathStr.split(',') : []
-    return startsWith(p, start.moves) ? p : start.moves
+    const legal: PlayedMove[] = []
+    for (const uci of p) {
+      const m = playUci(legal.at(-1)?.fen ?? START_FEN, uci)
+      if (!m) break
+      legal.push(m)
+    }
+    const prefix = p.slice(0, legal.length)
+    return startsWith(prefix, start.moves)
+      ? { path: prefix, played: legal }
+      : { path: start.moves, played: replay(start.moves) }
   }, [rawPathStr, start.moves])
   const pathStr = path.join(',')
-  const played = useMemo(() => {
-    try {
-      return replay(path)
-    } catch {
-      return []
-    }
-  }, [path])
   // The board never goes back before the repertoire's start.
   const floor = start.moves.length
 
