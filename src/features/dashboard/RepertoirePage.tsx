@@ -2,8 +2,15 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { ArrowLeft, BookIcon, TargetIcon, TrainIcon } from '../../components/icons'
-import { ColorDot, Notice, ScoreRing, Section } from '../../components/ui'
-import { addLine, deleteRepertoire, MoveConflictError, OutsideRepertoireError, renameRepertoire } from '../../db/repertoire'
+import { ColorDot, Notice, ScoreRing, Section, Toggle } from '../../components/ui'
+import {
+  addLine,
+  deleteRepertoire,
+  MoveConflictError,
+  OutsideRepertoireError,
+  renameRepertoire,
+  setRepertoirePaused,
+} from '../../db/repertoire'
 import { useSettings } from '../../db/settings'
 import { useRepertoire, type RepertoireData } from '../../db/useRepertoire'
 import { pathTo } from '../../lib/chess/graph'
@@ -88,6 +95,14 @@ export function RepertoirePage() {
               <TargetIcon size={15} /> Drill
             </Link>
           </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Toggle label="Include in daily training" checked={!rep.paused} onChange={(on) => setRepertoirePaused(rep.id, !on)} />
+          {rep.paused && (
+            <span className="text-xs text-faint">
+              Paused: left out of Review, Learn and Drill on Home. The buttons above still train it.
+            </span>
+          )}
         </div>
       </div>
 

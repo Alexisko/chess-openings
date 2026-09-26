@@ -43,7 +43,8 @@ const MODE_TITLE: Record<TrainMode, string> = { review: 'Review', learn: 'Learn 
 async function buildQueue(mode: TrainMode, repId: string | null, extraNew: number): Promise<QueuedRun[]> {
   const settings = await getSettings()
   const reps = (await db.repertoires.toArray())
-    .filter((r) => !repId || r.id === repId)
+    // A paused repertoire only trains when asked for by name.
+    .filter((r) => (repId ? r.id === repId : !r.paused))
     .sort((a, b) => (a.color === b.color ? a.createdAt - b.createdAt : a.color === 'white' ? -1 : 1))
   const now = new Date()
   let newBudget = Math.max(0, settings.newPerDay - (await learnedToday())) + extraNew
