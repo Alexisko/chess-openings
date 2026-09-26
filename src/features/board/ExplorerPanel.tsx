@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { pct } from '../../components/format'
 import { WdlBar } from '../../components/ui'
 import { startLogin } from '../../lib/auth/lichess'
@@ -15,9 +16,13 @@ interface Props {
   onPick: (uci: string) => void
 }
 
+/** Moves played less often than this are folded away until asked for (repertoire moves always show). */
+const RARE_SHARE = 0.05
+
 /** Opening explorer table: what players at the chosen level play here. */
 export function ExplorerPanel({ state, filter, repMoves, myTurn, evaluation, onPick }: Props) {
   const { data, error, loading } = state
+  const [showRare, setShowRare] = useState(false)
   if (error instanceof AuthRequiredError)
     return (
       <div className="text-sm">
@@ -49,6 +54,9 @@ export function ExplorerPanel({ state, filter, repMoves, myTurn, evaluation, onP
 
   const evalByMove = new Map((evaluation?.lines ?? []).map((l) => [l.pv[0], l]))
   const preparedShare = data.moves.filter((m) => repMoves.has(m.uci)).reduce((s, m) => s + totalGames(m), 0) / total
+  const isRare = (m: (typeof data.moves)[number]) => totalGames(m) / total < RARE_SHARE && !repMoves.has(m.uci)
+  const rare = data.moves.filter(isRare).length
+  const shown = showRare ? data.moves : data.moves.filter((m) => !isRare(m))
 
   return (
     <div className={loading ? 'opacity-60' : ''}>
@@ -73,7 +81,7 @@ export function ExplorerPanel({ state, filter, repMoves, myTurn, evaluation, onP
           </tr>
         </thead>
         <tbody>
-          {data.moves.map((m) => {
+          {shown.map((m) => {
             const n = totalGames(m)
             const inRep = repMoves.has(m.uci)
             const ev = evalByMove.get(m.uci)
@@ -98,6 +106,13 @@ export function ExplorerPanel({ state, filter, repMoves, myTurn, evaluation, onP
           })}
         </tbody>
       </table>
+      {rare > 0 && (
+        <button className="mt-1.5 text-xs text-muted hover:text-ink" onClick={() => setShowRare(!showRare)}>
+          {showRare
+            ? `Hide moves under ${pct(RARE_SHARE)}`
+            : `Show ${rare} rarer move${rare === 1 ? '' : 's'} (under ${pct(RARE_SHARE)})`}
+        </button>
+      )}
       <p className="mt-2 text-[11px] text-faint">{describeFilter(filter)}</p>
     </div>
   )

@@ -340,80 +340,6 @@ export function BuilderPage() {
           </div>
         )}
 
-        {showList && chapters && chapter && (
-          <section className="card">
-            <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
-              <span className="shrink-0 font-display text-[15px] font-medium">Chapters</span>
-              {start.moves.length > 0 && (
-                <span className="truncate text-muted" title="The repertoire starts here">
-                  from {formatMoves(start.sans)}
-                </span>
-              )}
-            </div>
-            <div className="max-h-[30vh] overflow-y-auto">
-              <ChapterList
-                tree={tree}
-                chapters={chapters}
-                selected={chapter}
-                onSelect={selectChapter}
-                share={shareOf}
-                extra={(ch) => {
-                  const sc = chapterScore(ch)
-                  return sc !== undefined && <span className={scoreColor(sc)} title="Prepared">{pct(sc)}</span>
-                }}
-              />
-            </div>
-          </section>
-        )}
-
-        <section className="card">
-          <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
-            {chapters && chapter ? (
-              <ChapterStepper chapters={chapters} selected={chapter} onSelect={selectChapter}>
-                <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
-                  {chapter.title}
-                </span>
-                <button
-                  className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
-                  onClick={() => renameChapter(chapter, naming)}
-                  aria-label="Rename chapter"
-                  title="Rename chapter"
-                >
-                  <PencilIcon size={14} />
-                </button>
-              </ChapterStepper>
-            ) : (
-              <span className="px-2 font-display text-[15px] font-medium">Lines</span>
-            )}
-          </div>
-          <div data-tree-scroll className="p-2.5 md:max-h-[45vh] md:overflow-y-auto">
-            {!tree.children.length ? (
-              <p className="px-1 text-sm text-muted">Play a move on the board or pick one from the explorer.</p>
-            ) : (
-              chapters &&
-              chapter && (
-                <ChapterLines
-                  tree={tree}
-                  chapters={chapters}
-                  chapter={chapter}
-                  current={currentPath}
-                  onJump={goTo}
-                  share={shareOf}
-                  crossNote={crossNote}
-                  glyphOf={glyphOf}
-                />
-              )
-            )}
-          </div>
-          {chapter && tree.children.length > 0 && (
-            <div className="border-t border-line/70 px-3 py-2">
-              <ChapterTraining rep={rep} chapter={chapter} cards={data.cardMap} score={chapterScore(chapter)} compact />
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="flex flex-col gap-5">
         <Section
           title={myTurn ? 'Your move' : 'Opponent replies'}
           right={
@@ -496,6 +422,7 @@ export function BuilderPage() {
             )
           })}
           <ExplorerPanel
+            key={fen}
             state={explorerState}
             filter={panelFilter}
             repMoves={repMovesHere}
@@ -505,6 +432,80 @@ export function BuilderPage() {
           />
         </Section>
 
+      </div>
+
+      <div className="flex flex-col gap-5">
+        {showList && chapters && chapter && (
+          <section className="card">
+            <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
+              <span className="shrink-0 font-display text-[15px] font-medium">Chapters</span>
+              {start.moves.length > 0 && (
+                <span className="truncate text-muted" title="The repertoire starts here">
+                  from {formatMoves(start.sans)}
+                </span>
+              )}
+            </div>
+            <div className="max-h-[30vh] overflow-y-auto">
+              <ChapterList
+                tree={tree}
+                chapters={chapters}
+                selected={chapter}
+                onSelect={selectChapter}
+                share={shareOf}
+                extra={(ch) => {
+                  const sc = chapterScore(ch)
+                  return sc !== undefined && <span className={scoreColor(sc)} title="Prepared">{pct(sc)}</span>
+                }}
+              />
+            </div>
+          </section>
+        )}
+
+        <section className="card">
+          <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
+            {chapters && chapter ? (
+              <ChapterStepper chapters={chapters} selected={chapter} onSelect={selectChapter}>
+                <span className="min-w-0 truncate font-display text-[15px] font-medium" title={chapter.name}>
+                  {chapter.title}
+                </span>
+                <button
+                  className="shrink-0 rounded-md p-1 text-faint hover:bg-surface-3 hover:text-ink"
+                  onClick={() => renameChapter(chapter, naming)}
+                  aria-label="Rename chapter"
+                  title="Rename chapter"
+                >
+                  <PencilIcon size={14} />
+                </button>
+              </ChapterStepper>
+            ) : (
+              <span className="px-2 font-display text-[15px] font-medium">Lines</span>
+            )}
+          </div>
+          <div data-tree-scroll className="p-2.5 md:max-h-[60vh] md:overflow-y-auto">
+            {!tree.children.length ? (
+              <p className="px-1 text-sm text-muted">Play a move on the board or pick one from the explorer.</p>
+            ) : (
+              chapters &&
+              chapter && (
+                <ChapterLines
+                  tree={tree}
+                  chapters={chapters}
+                  chapter={chapter}
+                  current={currentPath}
+                  onJump={goTo}
+                  share={shareOf}
+                  crossNote={crossNote}
+                  glyphOf={glyphOf}
+                />
+              )
+            )}
+          </div>
+          {chapter && tree.children.length > 0 && (
+            <div className="border-t border-line/70 px-3 py-2">
+              <ChapterTraining rep={rep} chapter={chapter} cards={data.cardMap} score={chapterScore(chapter)} compact />
+            </div>
+          )}
+        </section>
         {last && (
           <Section title={`What ${formatMoves([last.san], cursor - 1)} does`}>
             <MoveInsight
