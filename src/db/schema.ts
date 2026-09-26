@@ -1,6 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Card as FsrsCard } from 'ts-fsrs'
+import type { Glyph } from '../lib/chess/glyphs'
 import type { Color } from '../lib/chess/position'
+import type { ChapterBreak } from '../lib/openings/chapters'
 
 // Every synced record carries a UUID and timestamps so that a sync layer can be
 // added later without migrating data. Review logs are append-only events.
@@ -25,11 +27,18 @@ export interface Repertoire {
   updatedAt: number
 }
 
-/** A position in any repertoire, keyed by its move-order independent key. */
+/**
+ * What the user wrote about a position, shared by every repertoire that
+ * reaches it. Keyed by its move-order independent key.
+ */
 export interface PositionNote {
   key: string
   note: string
   tags: string[]
+  /** The user's name for the line reaching this position, shown instead of the opening name. */
+  name?: string
+  /** Forces or prevents a chapter start at this position (see lib/openings/chapters). */
+  chapter?: ChapterBreak
   updatedAt: number
 }
 
@@ -45,6 +54,11 @@ export interface RepMove {
   /** True when the repertoire owner makes this move. */
   byMe: boolean
   comment: string
+  /**
+   * Move symbol set by the user. An empty string clears the symbol the engine
+   * would add; missing means none was set.
+   */
+  glyph?: Glyph | ''
   createdAt: number
   updatedAt: number
 }

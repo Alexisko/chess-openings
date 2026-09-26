@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { openingTrail, shortName } from './names'
+import { openingTrail, shortName, variationOf } from './names'
 
 const kp = { eco: 'C20', name: "King's Pawn Game" }
 const vienna = { eco: 'C25', name: 'Vienna Game' }
@@ -53,8 +53,28 @@ describe('shortName', () => {
     )
   })
 
+  it('drops the variation shared with a sibling sub-variation', () => {
+    expect(shortName('Vienna Game: Vienna Gambit, Steinitz Variation', 'Vienna Game: Vienna Gambit, Main Line')).toBe(
+      'Steinitz Variation',
+    )
+  })
+
   it('keeps names from another family, and names with no previous one', () => {
     expect(shortName(vienna.name, kp.name)).toBe('Vienna Game')
     expect(shortName(gambit.name)).toBe('Vienna Game: Vienna Gambit')
+  })
+})
+
+describe('variationOf', () => {
+  it('drops the sub-variation', () => {
+    expect(variationOf('Vienna Game: Vienna Gambit, Steinitz Variation')).toBe('Vienna Game: Vienna Gambit')
+    expect(variationOf('Vienna Game')).toBe('Vienna Game')
+  })
+
+  it('keeps a comma that belongs to the family name', () => {
+    expect(variationOf('Vienna Gambit, with Max Lange Defense')).toBe('Vienna Gambit, with Max Lange Defense')
+    expect(variationOf('Vienna Gambit, with Max Lange Defense: Steinitz Gambit, Main Line')).toBe(
+      'Vienna Gambit, with Max Lange Defense: Steinitz Gambit',
+    )
   })
 })

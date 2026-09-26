@@ -2,7 +2,9 @@ import { createEmptyCard } from 'ts-fsrs'
 import { buildGraph, cardPositions, movesToRemove } from '../lib/chess/graph'
 import { playUci, positionKey, turnOf, type Color } from '../lib/chess/position'
 import { repStart, startOf, startsWith } from '../lib/chess/start'
-import { db, now, uuid, type AppDB, type RepMove, type Repertoire } from './schema'
+import type { Glyph } from '../lib/chess/glyphs'
+import type { ChapterBreak } from '../lib/openings/chapters'
+import { db, now, uuid, type AppDB, type PositionNote, type RepMove, type Repertoire } from './schema'
 
 export async function createRepertoire(
   name: string,
@@ -216,7 +218,24 @@ export async function setMoveComment(id: string, comment: string, d: AppDB = db)
   await d.moves.update(id, { comment, updatedAt: now() })
 }
 
-export async function setPositionNote(key: string, note: string, d: AppDB = db) {
-  const existing = await d.positions.get(key)
-  await d.positions.put({ key, note, tags: existing?.tags ?? [], updatedAt: now() })
+export async function setMoveGlyph(id: string, glyph: Glyph | '' | undefined, d: AppDB = db) {
+  await d.moves.update(id, { glyph, updatedAt: now() })
 }
+
+/** Changes what the user wrote about a position, keeping the rest. */
+async function updatePosition(key: string, change: Partial<Omit<PositionNote, 'key' | 'updatedAt'>>, d: AppDB) {
+  await d.transaction('rw', d.positions, async () => {
+    const existing = await d.positions.get(key)
+    await d.positions.put({ note: '', tags: [], ...existing, ...change, key, updatedAt: now() })
+  })
+}
+
+export const setPositionNote = (key: string, note: string, d: AppDB = db) => updatePosition(key, { note }, d)
+
+/** Names the line reaching a position (a chapter or a side line); empty restores the opening name. */
+export const setPositionName = (key: string, name: string, d: AppDB = db) =>
+  updatePosition(key, { name: name.trim() || undefined }, d)
+
+/** Forces or prevents a chapter start at a position; undefined goes back to the automatic rule. */
+export const setChapterBreak = (key: string, chapter: ChapterBreak | undefined, d: AppDB = db) =>
+  updatePosition(key, { chapter }, d)

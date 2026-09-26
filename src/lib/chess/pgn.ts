@@ -3,6 +3,7 @@ import { ChildNode, defaultGame, makePgn, parsePgn, startingPosition, type Node,
 import { parseSan } from 'chessops/san'
 import { makeUci } from 'chessops/util'
 import type { RepMove } from '../../db/schema'
+import { glyphToNag } from './glyphs'
 import type { RepGraph } from './graph'
 
 /**
@@ -56,7 +57,7 @@ export function graphToPgn(g: RepGraph, name: string, startSans: string[] = []):
   game.headers.delete('Result')
   const visit = (key: string, node: Node<PgnNodeData>) => {
     for (const m of g.movesFrom.get(key) ?? []) {
-      const child = new ChildNode<PgnNodeData>({ san: m.san, comments: commentsFor(g, m) })
+      const child = new ChildNode<PgnNodeData>({ san: m.san, comments: commentsFor(g, m), nags: m.glyph ? [glyphToNag(m.glyph)] : undefined })
       node.children.push(child)
       if (!g.transpositions.has(m.id)) visit(m.toKey, child)
     }
