@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
-import { Section } from '../../components/ui'
+import { Section, Toggle } from '../../components/ui'
 import { exportBackup, importBackup } from '../../db/backup'
 import { confirmDialog } from '../../lib/dialog'
 import { db } from '../../db/schema'
 import { setSetting, useSettings, type Settings } from '../../db/settings'
 import { logout, saveToken, startLogin } from '../../lib/auth/lichess'
 import { ALL_SPEEDS, RATING_BUCKETS, type ExplorerFilter } from '../../lib/explorer'
+import { playSound, setSoundPrefs, soundPrefs } from '../../lib/sound'
 import { syncNow, useSyncStatus } from '../../lib/sync/auto'
 
 export function SettingsPage() {
@@ -18,6 +19,7 @@ export function SettingsPage() {
       <SyncSettings loggedIn={!!settings.lichessUser} />
       <ExplorerSettings filter={settings.explorerFilter} />
       <TrainingSettings settings={settings} />
+      <SoundSettings />
       <Backup />
     </div>
   )
@@ -283,6 +285,43 @@ function TrainingSettings({ settings }: { settings: Settings }) {
           max={500}
           onChange={(n) => setSetting('blunderThreshold', n)}
         />
+      </div>
+    </Section>
+  )
+}
+
+function SoundSettings() {
+  const [prefs, setPrefs] = useState(soundPrefs)
+  const update = (next: Partial<typeof prefs>) => {
+    setSoundPrefs(next)
+    setPrefs(soundPrefs())
+  }
+  return (
+    <Section title="Sound">
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex items-center gap-3">
+          <p className="flex-1 text-xs leading-relaxed text-muted">
+            Moves and captures, and in training: a wrong move, a finished line, the end of the session. Saved on this
+            device only.
+          </p>
+          <Toggle label="Sounds" checked={prefs.enabled} onChange={(enabled) => update({ enabled })} />
+        </div>
+        <label className={`flex items-center gap-3 ${prefs.enabled ? '' : 'opacity-50'}`}>
+          <span className="w-40 text-muted">Volume</span>
+          <input
+            type="range"
+            className="flex-1 accent-brass"
+            min={0}
+            max={1}
+            step={0.05}
+            value={prefs.volume}
+            disabled={!prefs.enabled}
+            onChange={(e) => update({ volume: Number(e.target.value) })}
+            // Let the new level be heard once it's chosen.
+            onPointerUp={() => playSound('move')}
+            onKeyUp={() => playSound('move')}
+          />
+        </label>
       </div>
     </Section>
   )

@@ -30,7 +30,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,mp3}'],
         // The engine is large; cache it on first use instead of precaching.
         globIgnores: ['stockfish/**'],
         navigateFallback: `${base}index.html`,
