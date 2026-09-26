@@ -57,7 +57,7 @@ async function fill(targets: Target[], have: ReadonlyMap<string, Evaluation>, ca
 }
 
 /**
- * The engine's symbols ('?' and '??') for the opponent's moves in a tree,
+ * The engine's symbols ('?!', '?' and '??') for the opponent's moves in a tree,
  * from cached evaluations. With `download`, missing cloud evaluations are
  * fetched in the background. `glyphOf` is the symbol to show on a node: the
  * one the user set, else the engine's (none if the user cleared it).

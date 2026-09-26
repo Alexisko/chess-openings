@@ -26,8 +26,9 @@ are against the moves real opponents play.
     two columns, side lines on their own rows, deeper branches in parentheses, comments inline). Browse
     chapters from the outline above it (or step through them with ‹ ›), rename them, or force / prevent a
     chapter start on an opponent move. The Overview and the repertoire page are organised by chapter too.
-  - Moves take symbols (!! ! !? ?! ? ??). The engine marks the opponent's mistakes and blunders itself (drop
-    in winning chances, Lichess thresholds, from Lichess cloud evaluations); your own symbol wins.
+  - Moves take symbols (!! ! !? ?! ? ??): click the current move in the lines again to pick one. The engine marks the
+    opponent's inaccuracies, mistakes and blunders itself (drop in winning chances, Lichess thresholds, from Lichess
+    cloud evaluations); your own symbol wins. The last move's symbol shows on its square, as in a Lichess study.
   - The opening's name follows you along the line ("Vienna Game → Vienna Gambit"), here, in training and on
     the overview. Names are the Lichess opening names, bundled in the app, or the names you give lines; a
     position without its own name keeps the one before it. Training only names positions already on the

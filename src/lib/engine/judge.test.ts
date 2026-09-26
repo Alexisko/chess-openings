@@ -20,13 +20,17 @@ describe('winningChances', () => {
 })
 
 describe('judgeMove', () => {
-  it('marks blunders and mistakes by the drop in winning chances', () => {
+  it('marks blunders, mistakes and inaccuracies by the drop in winning chances', () => {
     const before = ev(START_FEN, [
       ['e2e4', 30],
+      ['d2d4', 20],
+      ['b2b3', -40],
       ['a2a3', -120],
       ['g2g4', -250],
     ])
     expect(judgeMove(before, 'e2e4')).toBeUndefined()
+    expect(judgeMove(before, 'd2d4')).toBeUndefined()
+    expect(judgeMove(before, 'b2b3')).toBe('?!')
     expect(judgeMove(before, 'a2a3')).toBe('?')
     expect(judgeMove(before, 'g2g4')).toBe('??')
   })
@@ -49,7 +53,7 @@ describe('judgeMove', () => {
   it("doesn't flag small losses once the game is decided", () => {
     const before = ev(START_FEN, [
       ['e2e4', 900],
-      ['d2d4', 600],
+      ['d2d4', 700],
     ])
     expect(judgeMove(before, 'd2d4')).toBeUndefined()
   })
