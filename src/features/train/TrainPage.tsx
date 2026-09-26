@@ -1,3 +1,4 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
@@ -17,11 +18,17 @@ import {
 } from '../../components/icons'
 import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
 import { recordAttempt, learnedToday } from '../../db/reviews'
-import { db, type Repertoire, type ReviewMode } from '../../db/schema'
+import { db, type RepMove, type Repertoire, type ReviewMode } from '../../db/schema'
+import { GLYPH_TONE } from '../../lib/chess/glyphs'
+import { engineGlyphOf } from '../../lib/engine/useEngineGlyphs'
+import type { Evaluation } from '../../lib/engine/uci'
 import { getSettings, useSettings } from '../../db/settings'
 import { crossAt, crossIndex } from '../../lib/chess/cross'
 import { buildGraph, enumerateLines, type Line } from '../../lib/chess/graph'
-import { repStart } from '../../lib/chess/start'
+import { repStart, startOf, startsWith } from '../../lib/chess/start'
+import { buildTree } from '../../lib/chess/tree'
+import { buildChapters } from '../../lib/openings/chapters'
+import { loadNaming } from '../../lib/openings/naming'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN } from '../../lib/chess/position'
 import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../../lib/explorer'
 import { openingTrail } from '../../lib/openings/names'
@@ -43,8 +50,11 @@ type TrainMode = Exclude<ReviewMode, 'game'>
 
 const MODE_TITLE: Record<TrainMode, string> = { review: 'Review', learn: 'Learn new moves', drill: 'Drill weak spots' }
 
-/** Builds the session queue once, from a snapshot of the data. */
-async function buildQueue(mode: TrainMode, repId: string | null, extraNew: number): Promise<QueuedRun[]> {
+/**
+ * Builds the session queue once, from a snapshot of the data. With a chapter
+ * (the moves to its first position), only the lines through it are trained.
+ */
+async function buildQueue(mode: TrainMode, repId: string | null, chapter: string[], extraNew: number): Promise<QueuedRun[]> {
   const settings = await getSettings()
   const all = await db.repertoires.toArray()
   const reps = all
@@ -63,7 +73,10 @@ async function buildQueue(mode: TrainMode, repId: string | null, extraNew: numbe
   for (const rep of reps) {
     const moves = withMoves.find((r) => r.rep.id === rep.id)!.moves
     const cards = await db.cards.where({ repertoireId: rep.id }).toArray()
-    const lines = enumerateLines(buildGraph(moves, rep.color, repStart(rep).key))
+    const start = repStart(rep)
+    const lines = enumerateLines(buildGraph(moves, rep.color, start.key)).filter(
+      (l) => !chapter.length || startsWith([...start.moves, ...l.moves.map((m) => m.uci)], chapter),
+    )
     const cardMap = new Map(cards.map((c) => [c.positionKey, c.fsrs]))
     let runs: PlannedRun[] = []
     if (mode === 'review') runs = planReview(lines, cardMap, now)
@@ -117,19 +130,25 @@ export function TrainPage() {
   const [params] = useSearchParams()
   const mode = (params.get('mode') as TrainMode) || 'review'
   const repId = params.get('rep')
+  // A chapter only narrows a single repertoire's session.
+  const chapterParam = (repId && params.get('chapter')) || ''
   const [extraNew, setExtraNew] = useState(0)
-  const sessionKey = `${mode}-${repId}-${extraNew}`
-  const [loaded, setLoaded] = useState<{ key: string; queue: QueuedRun[] }>()
+  const sessionKey = `${mode}-${repId}-${chapterParam}-${extraNew}`
+  const [loaded, setLoaded] = useState<{ key: string; queue: QueuedRun[]; chapter?: string }>()
 
   useEffect(() => {
     let live = true
-    buildQueue(mode, repId, extraNew).then((queue) => live && setLoaded({ key: sessionKey, queue }))
+    const chapter = chapterParam ? chapterParam.split(',') : []
+    Promise.all([buildQueue(mode, repId, chapter, extraNew), repId && chapter.length ? chapterTitle(repId, chapter) : undefined]).then(
+      ([queue, title]) => live && setLoaded({ key: sessionKey, queue, chapter: title }),
+    )
     return () => {
       live = false
     }
-  }, [mode, repId, extraNew, sessionKey])
+  }, [mode, repId, chapterParam, extraNew, sessionKey])
 
   const queue = loaded?.key === sessionKey ? loaded.queue : null
+  const chapter = loaded?.key === sessionKey ? loaded.chapter : undefined
   if (!queue) return <p className="animate-pulse text-muted">Preparing session…</p>
   if (!queue.length)
     return (
@@ -137,7 +156,10 @@ export function TrainPage() {
         <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full border border-brass/40 bg-brass/10 text-brass">
           <ModeIcon mode={mode} size={24} />
         </div>
-        <div className="eyebrow">{MODE_TITLE[mode]}</div>
+        <div className="eyebrow">
+          {MODE_TITLE[mode]}
+          {chapter && ` · ${chapter}`}
+        </div>
         <h1 className="page-title mt-1 mb-2">
           {mode === 'review' ? 'Nothing due' : mode === 'learn' ? 'Done for today' : 'No weak spots'}
         </h1>
@@ -165,7 +187,18 @@ export function TrainPage() {
         </div>
       </div>
     )
-  return <Session key={sessionKey} mode={mode} queue={queue} />
+  return <Session key={sessionKey} mode={mode} queue={queue} chapter={chapter} />
+}
+
+/** The name of the chapter starting after `path` in a repertoire. */
+async function chapterTitle(repId: string, path: string[]): Promise<string | undefined> {
+  const rep = await db.repertoires.get(repId)
+  if (!rep) return undefined
+  const moves = await db.moves.where({ repertoireId: rep.id }).toArray()
+  const start = repStart(rep)
+  const tree = buildTree(buildGraph(moves, rep.color, start.key), start.moves)
+  const chapters = buildChapters(tree, await loadNaming())
+  return chapters.startingAt(startOf(path).moves)?.title
 }
 
 function ModeIcon({ mode, size }: { mode: TrainMode; size?: number }) {
@@ -174,7 +207,7 @@ function ModeIcon({ mode, size }: { mode: TrainMode; size?: number }) {
   return <TrainIcon size={size} />
 }
 
-function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
+function Session({ mode, queue, chapter }: { mode: TrainMode; queue: QueuedRun[]; chapter?: string }) {
   const [index, setIndex] = useState(0)
   // The furthest line reached: lines before it are being played again, as practice.
   const [furthest, setFurthest] = useState(0)
@@ -228,6 +261,9 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
   }, [current])
   const settings = useSettings()
   const keys = useMemo(() => path.fens.map(positionKey), [path])
+  // The opponent's move just played, if it's a mistake to punish: marked by you, else by the engine.
+  const lastTheirs = run && run.ply > 0 ? run.moves[run.ply - 1] : undefined
+  const punish = usePunish(lastTheirs && !lastTheirs.byMe ? lastTheirs : undefined)
   const openings = useOpeningNames(keys, settings?.explorerFilter)
 
   const goToLine = useCallback(
@@ -351,7 +387,10 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2.5">
           <ColorDot color={rep.color} size={14} />
-          <span className="truncate font-display text-xl font-medium tracking-tight">{rep.name}</span>
+          <span className="truncate font-display text-xl font-medium tracking-tight">
+            {rep.name}
+            {chapter && <span className="text-muted"> · {chapter}</span>}
+          </span>
           <span className="chip ml-auto shrink-0 py-0.5">
             <ModeIcon mode={mode} size={13} />
             {MODE_TITLE[mode]}
@@ -407,6 +446,15 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
       </div>
 
       <div className="flex flex-col gap-4 md:pt-[4.25rem]">
+        {punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs && (
+          <div className="card flex animate-pop items-baseline gap-2 border-bad/40 px-4 py-3 text-sm">
+            <span className={`font-display text-lg font-semibold ${GLYPH_TONE[punish]}`}>{punish}</span>
+            <span>
+              {formatMoves([lastTheirs.san], start.moves.length + run.ply - 1)}
+              {punish} is {punish === '??' ? 'a blunder' : 'a mistake'}. Find the move that punishes it.
+            </span>
+          </div>
+        )}
         <FeedbackCard
           key={fbId || `${index}-${pass}`}
           feedback={feedback}
@@ -489,6 +537,20 @@ function Session({ mode, queue }: { mode: TrainMode; queue: QueuedRun[] }) {
       </div>
     </div>
   )
+}
+
+/** '?' or '??' when an opponent move is a mistake: the symbol you set on it, else the engine's (from cached evaluations). */
+function usePunish(move: RepMove | undefined): '?' | '??' | undefined {
+  const evals = useLiveQuery(async () => {
+    if (!move || move.glyph !== undefined) return undefined
+    const rows = await db.evalCache.bulkGet([move.fromKey, move.toKey])
+    const map = new Map<string, Evaluation>()
+    rows.forEach((r) => r && map.set(r.positionKey, r.data as Evaluation))
+    return map
+  }, [move])
+  if (!move) return undefined
+  const g = move.glyph !== undefined ? move.glyph : evals && engineGlyphOf(evals, move.fromKey, move.fromFen, move.uci, move.toKey)
+  return g === '?' || g === '??' ? g : undefined
 }
 
 /** The moves so far, numbered; click one to look at the position after it. */

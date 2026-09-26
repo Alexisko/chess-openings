@@ -16,7 +16,7 @@ interface Props {
   /** Names of other repertoires a move joins (transposition across repertoires). */
   crossNote?: (parent: TreeNode, child: TreeNode) => string[]
   /** Symbol to show on a move (default: the one set by the user). */
-  glyphOf?: (node: TreeNode) => Glyph | undefined
+  glyphOf?: (node: TreeNode, parent: TreeNode) => Glyph | undefined
 }
 
 const id = (path: string[]) => path.join(',')
@@ -60,7 +60,7 @@ export function ChapterLines({ tree, chapters, chapter, current, onJump, share, 
 
   const move = (parent: TreeNode, node: TreeNode, number: boolean, cell = false) => {
     const isCurrent = id(node.path) === currentId
-    const glyph = glyphOf(node)
+    const glyph = glyphOf(node, parent)
     const joins = crossNote?.(parent, node) ?? []
     const s = cell ? shareOf(parent, node) : undefined
     return (
