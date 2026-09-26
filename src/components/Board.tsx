@@ -3,6 +3,7 @@ import type { Api } from '@lichess-org/chessground/api'
 import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { useEffect, useRef } from 'react'
+import { GLYPH_BADGE, type Glyph } from '../lib/chess/glyphs'
 import { isCheck, legalDests, moveBetween, setupPosition, turnOf, type Color } from '../lib/chess/position'
 import { playSound } from '../lib/sound'
 
@@ -19,6 +20,8 @@ interface Props {
   movable?: Color | 'both' | 'none'
   lastMove?: [string, string]
   arrows?: Arrow[]
+  /** A move symbol shown as a badge in the corner of a square. */
+  glyph?: { square: string; glyph: Glyph }
   onMove?: (uci: string) => void
   /** Glows around the board once; a new id replays it. */
   flash?: { kind: 'correct' | 'wrong'; id: number }
@@ -33,7 +36,7 @@ const BRUSHES = {
 }
 
 /** Chessground board. Promotions are always to a queen. */
-export function Board({ fen, orientation, movable = 'both', lastMove, arrows, onMove, flash }: Props) {
+export function Board({ fen, orientation, movable = 'both', lastMove, arrows, glyph, onMove, flash }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const api = useRef<Api | null>(null)
   const onMoveRef = useRef(onMove)
@@ -93,8 +96,9 @@ export function Board({ fen, orientation, movable = 'both', lastMove, arrows, on
       dest: a.to as Key,
       brush: a.brush ?? 'green',
     }))
+    if (glyph) shapes.push({ orig: glyph.square as Key, customSvg: { html: glyphBadge(glyph.glyph) } })
     api.current?.setAutoShapes(shapes)
-  }, [arrows])
+  }, [arrows, glyph?.square, glyph?.glyph]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="board-frame">
@@ -104,6 +108,20 @@ export function Board({ fen, orientation, movable = 'both', lastMove, arrows, on
       {flash && <div key={flash.id} className="board-flash" data-kind={flash.kind} />}
     </div>
   )
+}
+
+/** Badge in the square's top-right corner, overhanging it (square = 100 units). */
+function glyphBadge(g: Glyph) {
+  return `<defs>
+    <filter id="glyph-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <g transform="translate(62 -8)">
+    <circle cx="23" cy="23" r="22" fill="${GLYPH_BADGE[g]}" filter="url(#glyph-shadow)" />
+    <text x="23" y="23" dy="0.36em" text-anchor="middle" fill="#fff" font-family="Instrument Sans Variable, system-ui, sans-serif"
+      font-weight="700" font-size="${g.length > 1 ? 24 : 30}" letter-spacing="-1">${g}</text>
+  </g>`
 }
 
 function squareIndex(key: string): number {

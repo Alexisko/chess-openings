@@ -15,8 +15,6 @@ import {
   previewRemoval,
   removeMoves,
   setChapterBreak,
-  setMoveComment,
-  setMoveGlyph,
   setPositionName,
   setPositionNote,
 } from '../../db/repertoire'
@@ -30,7 +28,7 @@ import { useEngineGlyphs } from '../../lib/engine/useEngineGlyphs'
 import { useMoveLoss } from '../../lib/engine/useMoveLoss'
 import { useEval } from '../../lib/engine/useEval'
 import { moveShare, useCachedExplorer, useExplorer, useOpeningNames, type ExplorerFilter } from '../../lib/explorer'
-import { GLYPH_NAMES, GLYPH_TONE, GLYPHS, type Glyph } from '../../lib/chess/glyphs'
+import type { Glyph } from '../../lib/chess/glyphs'
 import type { Chapter, ChapterBreak } from '../../lib/openings/chapters'
 import { useChapters, useNaming, type Naming } from '../../lib/openings/naming'
 import { renameChapter } from '../../lib/openings/renameChapter'
@@ -40,6 +38,7 @@ import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
 import { MoveInsight } from '../board/MoveInsight'
+import { GlyphPicker, MoveAnnotation } from './MoveAnnotation'
 import { builderUrl } from '../../lib/routes'
 import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
@@ -256,6 +255,10 @@ export function BuilderPage() {
 
   const last = cursor > 0 ? played[cursor - 1] : undefined
   const lastSquares = last ? (moveSquares(fens[cursor - 1], last.uci) ?? undefined) : undefined
+  // The symbol of the move just played, drawn on its square as in a Lichess study.
+  const lastNode = cursor > floor ? findNode(tree, path.slice(0, cursor)) : undefined
+  const lastParent = lastNode && findNode(tree, path.slice(0, cursor - 1))
+  const lastGlyph = lastNode && lastParent ? glyphOf(lastNode, lastParent) : undefined
   const arrows: Arrow[] = mine ? [{ ...squaresOf(fen, mine.uci), brush: 'green' }] : []
   // What the other repertoires play here, when it isn't this one's move.
   for (const { move } of elsewhere)
@@ -295,6 +298,7 @@ export function BuilderPage() {
           orientation={rep.color}
           lastMove={lastSquares}
           arrows={arrows.filter((a) => a.from)}
+          glyph={lastGlyph && lastSquares ? { square: lastSquares[1], glyph: lastGlyph } : undefined}
           onMove={play}
         />
         <div className="grid grid-cols-4 gap-2" title="Keyboard: ← →">
@@ -499,6 +503,21 @@ export function BuilderPage() {
                   share={shareOf}
                   crossNote={crossNote}
                   glyphOf={glyphOf}
+                  annotate={(node, parent, close) => {
+                    const m = graph?.movesFrom.get(parent.key)?.find((x) => x.uci === node.uci)
+                    return (
+                      m && (
+                        <div className="flex items-center gap-1.5">
+                          <GlyphPicker
+                            key={m.id}
+                            id={m.id}
+                            engineGlyph={m.byMe ? undefined : engineGlyph(parent.key, m.uci)}
+                            onPick={close}
+                          />
+                        </div>
+                      )
+                    )
+                  }}
                 />
               )
             )}
@@ -579,56 +598,11 @@ function Notes({
 }) {
   // null = loaded but empty, undefined = still loading (so defaultValue is set once loaded).
   const note = useLiveQuery(() => db.positions.get(positionKey).then((n) => n ?? null), [positionKey])
-  const move = useLiveQuery(() => (incoming ? db.moves.get(incoming.id).then((m) => m ?? null) : null), [incoming?.id])
-  // The symbol shown: the user's, else the engine's unless the user removed it.
-  const glyph = move?.glyph === '' ? undefined : move?.glyph || engineGlyph
-  const fromEngine = !!glyph && move?.glyph === undefined
-  const pickGlyph = (g: Glyph) => {
-    if (!incoming) return
-    // Removing the engine's symbol is remembered ('') so it doesn't come back.
-    if (g === glyph) return setMoveGlyph(incoming.id, g === engineGlyph ? '' : undefined)
-    return setMoveGlyph(incoming.id, g === engineGlyph ? undefined : g)
-  }
   const breakHere = note?.chapter
   const setBreak = (b: ChapterBreak | undefined) => setChapterBreak(positionKey, b)
   return (
     <Section title="Notes">
-      {incoming && move && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-xs text-muted">
-            Symbol for <span className="font-semibold text-ink">{incoming.san}</span>
-          </span>
-          {GLYPHS.map((g) => (
-            <button
-              key={g}
-              title={GLYPH_NAMES[g]}
-              onClick={() => pickGlyph(g)}
-              className={`min-w-8 rounded-md border px-1.5 py-0.5 text-sm font-semibold transition ${
-                glyph === g ? `border-brass/70 bg-brass/12 ${GLYPH_TONE[g]}` : 'border-line text-muted hover:border-line-strong hover:text-ink'
-              }`}
-            >
-              {g}
-            </button>
-          ))}
-          {fromEngine && <span className="text-[11px] text-faint">from the engine</span>}
-          {move.glyph === '' && engineGlyph && (
-            <span className="text-[11px] text-faint">engine&rsquo;s {engineGlyph} hidden</span>
-          )}
-        </div>
-      )}
-      {incoming && move !== undefined && (
-        <>
-          <label className="mb-1.5 block text-xs text-muted">
-            Why <span className="font-semibold text-ink">{incoming.san}</span>? Shown in the lines and after you play it in training.
-          </label>
-          <textarea
-            key={`m-${incoming.id}`}
-            className="input mb-3 h-16 w-full resize-y leading-relaxed"
-            defaultValue={move?.comment ?? ''}
-            onBlur={(e) => e.target.value !== (move?.comment ?? '') && setMoveComment(incoming.id, e.target.value)}
-          />
-        </>
-      )}
+      {incoming && <MoveAnnotation key={incoming.id} id={incoming.id} san={incoming.san} engineGlyph={engineGlyph} />}
       {incoming && note !== undefined && (
         <div className="mb-3 flex flex-col gap-1.5">
           <label className="text-xs text-muted" htmlFor={`name-${positionKey}`}>

@@ -11,12 +11,13 @@ export function winningChances(line: Pick<PvLine, 'cp' | 'mate'>): number {
   return 2 / (1 + Math.exp(-0.00368208 * cp)) - 1
 }
 
-/** Drops in winning chances (for the side that moved) that make a move a blunder or a mistake, as on Lichess. */
+/** Drops in winning chances (for the side that moved) that make a move a blunder, a mistake or an inaccuracy, as on Lichess. */
 const BLUNDER = 0.3
 const MISTAKE = 0.2
+const INACCURACY = 0.1
 
 /**
- * The symbol the engine gives a move: '??' or '?' when it gives up enough
+ * The symbol the engine gives a move: '??', '?' or '?!' when it gives up enough
  * winning chances compared with the best move, nothing otherwise. `before`
  * evaluates the position the move is played in; `after`, the position it
  * reaches, is only needed when the move isn't one of `before`'s lines.
@@ -29,5 +30,5 @@ export function judgeMove(before: Evaluation, uci: string, after?: Evaluation | 
   if (!played) return undefined
   const sign = turnOf(before.fen) === 'white' ? 1 : -1
   const drop = (winningChances(best) - winningChances(played)) * sign
-  return drop >= BLUNDER ? '??' : drop >= MISTAKE ? '?' : undefined
+  return drop >= BLUNDER ? '??' : drop >= MISTAKE ? '?' : drop >= INACCURACY ? '?!' : undefined
 }
