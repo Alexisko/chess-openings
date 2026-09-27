@@ -54,3 +54,11 @@ Listed in the suggested build order.
      change.
    - First check whether chessvision.ai's video search can be linked to a position. It already indexes 30k+
      chess videos by position.
+
+## Your games
+
+1. **Opening map.** A tech-tree view of your games per colour, next to the Openings and Explorer tabs of the
+   Games page and built on the same game tree (`lib/games/gameTree.ts`). Nodes are the positions where your
+   games branch (single-move chains collapsed, rare branches pruned): size = games, fill = your score, ring =
+   how well you followed your repertoire there (not in a repertoire / deviated / played it right). Click a node
+   to open it in the Explorer tab. On phones it falls back to the Openings list.

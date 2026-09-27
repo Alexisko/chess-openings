@@ -20,6 +20,19 @@ export function WdlBar({ white, draws, black }: { white: number; draws: number; 
   )
 }
 
+/** Your wins, draws and losses (moss, oak, oxblood), thin enough for a table row. */
+export function ResultBar({ win, draw, loss, className = '' }: { win: number; draw: number; loss: number; className?: string }) {
+  const total = win + draw + loss || 1
+  const title = `${win} won · ${draw} drawn · ${loss} lost`
+  return (
+    <div className={`flex h-1.5 overflow-hidden rounded-full bg-surface-3 ${className}`} title={title}>
+      <div className="bg-accent" style={{ width: `${(win / total) * 100}%` }} />
+      <div className="bg-line-strong" style={{ width: `${(draw / total) * 100}%` }} />
+      <div className="bg-bad" style={{ width: `${(loss / total) * 100}%` }} />
+    </div>
+  )
+}
+
 /** Horizontal evaluation bar (White-relative score). */
 export function EvalBar({ line }: { line?: PvLine }) {
   const cp = line ? (line.mate !== undefined ? (line.mate > 0 ? 1000 : -1000) : (line.cp ?? 0)) : 0

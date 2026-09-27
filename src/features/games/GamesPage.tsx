@@ -1,27 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router'
-import { pct, scoreColor } from '../../components/format'
-import { ColorDot, Section, Stat } from '../../components/ui'
+import { useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import { ColorDot, Section } from '../../components/ui'
 import { deleteAllGames, gradeForgottenMoves, loadRepIndex } from '../../db/games'
-import { db, type Game, type GameSpeed } from '../../db/schema'
+import { db, type GameSpeed } from '../../db/schema'
 import { useSettings, type Settings } from '../../db/settings'
-import { formatMoves } from '../../lib/chess/position'
-import {
-  analyzeGame,
-  collectFindings,
-  summarizeByRepertoire,
-  type Finding,
-  type FindingMove,
-  type GameAnalysis,
-  type Outcome,
-  type RepIndex,
-} from '../../lib/games/analyze'
+import type { Color } from '../../lib/chess/position'
+import { analyzeGame, type RepIndex } from '../../lib/games/analyze'
 import { importGames, type ImportProgress } from '../../lib/games/import'
 import { GAME_SPEEDS } from '../../lib/games/parse'
-import { lossKey, useMoveLosses, type LossTarget } from '../../lib/games/moveLoss'
-import { builderUrl } from '../../lib/routes'
 import { confirmDialog } from '../../lib/dialog'
+import { gamesParams, type GamesTab } from '../../lib/routes'
+import { Findings } from './Findings'
+import { GameExplorer } from './GameExplorer'
+import { OpeningOverview } from './OpeningOverview'
 
 const DAY = 24 * 3600 * 1000
 const PERIODS = [
@@ -30,16 +22,11 @@ const PERIODS = [
   { months: 12, label: '12 months' },
   { months: 0, label: 'All' },
 ]
-/** Engine checks are limited to the most frequent deviations. */
-const MAX_ENGINE_CHECKS = 30
-const LIST_SIZE = 8
 
-const OUTCOMES: { outcome: Outcome; label: string; cls: string }[] = [
-  { outcome: 'in-prep', label: 'Stayed in prep', cls: 'bg-accent' },
-  { outcome: 'opp-left', label: 'Opponent left your prep', cls: 'bg-info' },
-  { outcome: 'prep-ended', label: 'Your line ended', cls: 'bg-warn' },
-  { outcome: 'forgot', label: 'You forgot your move', cls: 'bg-bad' },
-  { outcome: 'not-covered', label: 'No repertoire', cls: 'bg-line-strong' },
+const TABS: { id: GamesTab; label: string }[] = [
+  { id: 'overview', label: 'Openings' },
+  { id: 'explorer', label: 'Explorer' },
+  { id: 'findings', label: 'Findings' },
 ]
 
 /** Games played in the last `months` months (0 = all). */
@@ -51,6 +38,13 @@ export function GamesPage() {
   const reps = useLiveQuery(() => loadRepIndex(), [])
   const [period, setPeriod] = useState(() => periodFrom(12))
   const [speeds, setSpeeds] = useState<GameSpeed[]>(GAME_SPEEDS)
+  // Tab, colour and explorer line live in the URL, so links can open them and Back works.
+  const [params, setParams] = useSearchParams()
+  const tab: GamesTab = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'overview'
+  const color: Color = params.get('color') === 'black' ? 'black' : 'white'
+  const at = useMemo(() => params.get('at')?.split(',').filter(Boolean) ?? [], [params])
+  const go = (next: { tab?: GamesTab; color?: Color; at?: string[] }, replace = false) =>
+    setParams(gamesParams(next.tab ?? tab, next.color ?? color, next.at ?? at), { replace })
 
   const analyses = useMemo(() => {
     if (!games || !reps) return undefined
@@ -58,6 +52,7 @@ export function GamesPage() {
       .filter((g) => g.playedAt >= period.since && speeds.includes(g.speed))
       .map((g) => analyzeGame(g, reps))
   }, [games, reps, period, speeds])
+  const ofColor = useMemo(() => analyses?.filter((a) => a.game.color === color), [analyses, color])
   // Only offer the time controls you actually have games in.
   const played = useMemo(() => GAME_SPEEDS.filter((s) => games?.some((g) => g.speed === s)), [games])
   const chip = (active: boolean) => `chip ${active ? 'chip-on' : ''}`
@@ -70,38 +65,86 @@ export function GamesPage() {
         <h1 className="page-title mt-1">Your games</h1>
       </div>
       <ImportSection settings={settings} count={games.length} newest={games[0]?.playedAt} reps={reps} />
-      {games.length > 0 && analyses && (
+      {games.length > 0 && analyses && ofColor && (
         <>
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="w-28 shrink-0 text-xs text-muted">Games from the last</span>
-            {PERIODS.map((p) => (
-              <button
-                key={p.months}
-                className={chip(period.months === p.months)}
-                onClick={() => setPeriod(periodFrom(p.months))}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          {played.length > 1 && (
-            <div className="-mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <span className="w-28 shrink-0 text-xs text-muted">Time controls</span>
-              {played.map((s) => (
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="w-28 shrink-0 text-xs text-muted">Games from the last</span>
+              {PERIODS.map((p) => (
                 <button
-                  key={s}
-                  className={chip(speeds.includes(s))}
-                  onClick={() => {
-                    const next = speeds.includes(s) ? speeds.filter((x) => x !== s) : [...speeds, s]
-                    if (next.some((x) => played.includes(x))) setSpeeds(next)
-                  }}
+                  key={p.months}
+                  className={chip(period.months === p.months)}
+                  onClick={() => setPeriod(periodFrom(p.months))}
                 >
-                  {s}
+                  {p.label}
                 </button>
               ))}
             </div>
+            {played.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="w-28 shrink-0 text-xs text-muted">Time controls</span>
+                {played.map((s) => (
+                  <button
+                    key={s}
+                    className={chip(speeds.includes(s))}
+                    onClick={() => {
+                      const next = speeds.includes(s) ? speeds.filter((x) => x !== s) : [...speeds, s]
+                      if (next.some((x) => played.includes(x))) setSpeeds(next)
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-b border-line/70">
+            <nav className="flex gap-1" role="tablist">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
+                    tab === t.id ? 'border-brass text-ink' : 'border-transparent text-muted hover:text-ink'
+                  }`}
+                  onClick={() => go({ tab: t.id })}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </nav>
+            {tab !== 'findings' && (
+              <div className="ml-auto flex gap-1 pb-1.5" role="group" aria-label="Colour">
+                {(['white', 'black'] as const).map((c) => (
+                  <button
+                    key={c}
+                    className={chip(color === c)}
+                    aria-pressed={color === c}
+                    onClick={() => go({ color: c, at: [] }, true)}
+                  >
+                    <ColorDot color={c} size={10} />
+                    {c === 'white' ? 'White' : 'Black'}
+                    <span className="text-faint tabular-nums">{analyses.filter((a) => a.game.color === c).length}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {tab === 'overview' && (
+            <OpeningOverview
+              analyses={ofColor}
+              color={color}
+              reps={reps}
+              onExplore={(line) => go({ tab: 'explorer', at: line })}
+            />
           )}
-          <Report analyses={analyses} reps={reps} settings={settings} />
+          {tab === 'explorer' && (
+            <GameExplorer analyses={ofColor} color={color} reps={reps} at={at} onGo={(line) => go({ at: line }, true)} />
+          )}
+          {tab === 'findings' && <Findings analyses={analyses} reps={reps} settings={settings} />}
         </>
       )}
     </div>
@@ -223,335 +266,3 @@ function ImportSection({
   )
 }
 
-function Report({ analyses, reps, settings }: { analyses: GameAnalysis[]; reps: RepIndex[]; settings: Settings }) {
-  const findings = useMemo(() => collectFindings(analyses, reps), [analyses, reps])
-  const summaries = useMemo(() => summarizeByRepertoire(analyses), [analyses])
-
-  // Check the most frequent moves where games left a repertoire.
-  const targets = useMemo(() => {
-    const list: (LossTarget & { n: number })[] = []
-    for (const f of findings)
-      if (f.outcome !== 'not-covered') for (const m of f.moves) list.push({ key: f.key, uci: m.uci, n: m.games.length })
-    return list.sort((a, b) => b.n - a.n).slice(0, MAX_ENGINE_CHECKS)
-  }, [findings])
-  const { losses, pending } = useMoveLosses(targets)
-  const lossOf = (f: Finding, m: FindingMove) => losses.get(lossKey({ key: f.key, uci: m.uci }))
-  const bad = (f: Finding, m: FindingMove) => (lossOf(f, m) ?? 0) >= settings.blunderThreshold
-
-  const forgot = findings.filter((f) => f.outcome === 'forgot')
-  const afterPrep = findings.filter((f) => f.outcome === 'prep-ended' && f.mover === 'me' && f.moves.some((m) => bad(f, m)))
-  const punish = findings.filter((f) => f.mover === 'opponent' && f.outcome !== 'not-covered' && f.moves.some((m) => bad(f, m)))
-  const unprepared = findings.filter((f) => f.outcome === 'opp-left')
-  const ended = findings.filter((f) => f.outcome === 'prep-ended')
-  const uncovered = findings.filter((f) => f.outcome === 'not-covered')
-  const repName = new Map(reps.map((r) => [r.rep.id, r.rep]))
-
-  const ctx: RowContext = { lossOf, threshold: settings.blunderThreshold, reps: repName }
-  return (
-    <>
-      <Overview analyses={analyses} />
-
-      {summaries.length > 0 && (
-        <Section title="By repertoire">
-          <table className="w-full text-sm">
-            <thead className="text-left text-[11px] tracking-wide text-faint uppercase">
-              <tr>
-                <th className="font-normal">Repertoire</th>
-                <th className="text-right font-normal">Games</th>
-                <th className="text-right font-normal" title="Average number of your moves played from the repertoire">
-                  Moves in prep
-                </th>
-                <th className="text-right font-normal">Forgot</th>
-                <th className="text-right font-normal">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaries
-                .sort((a, b) => b.games - a.games)
-                .map((s) => {
-                  const rep = repName.get(s.repertoireId)
-                  return (
-                    <tr key={s.repertoireId} className="border-t border-line/70">
-                      <td className="py-2">
-                        <Link to={`/rep/${s.repertoireId}`} className="flex items-center gap-2 font-display hover:text-maple">
-                          {rep && <ColorDot color={rep.color} />}
-                          {rep?.name}
-                        </Link>
-                      </td>
-                      <td className="text-right">{s.games}</td>
-                      <td className="text-right">{s.avgOwnMoves.toFixed(1)}</td>
-                      <td className={`text-right ${s.forgot ? 'text-bad' : 'text-muted'}`}>{s.forgot}</td>
-                      <td className={`text-right font-medium ${scoreColor(s.score)}`}>{pct(s.score)}</td>
-                    </tr>
-                  )
-                })}
-            </tbody>
-          </table>
-        </Section>
-      )}
-
-      {pending > 0 && <p className="text-xs text-muted">Checking {pending} positions with the engine…</p>}
-
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 md:items-start">
-        <div className="flex flex-col gap-4">
-          <FindingList
-            title="You forgot your move"
-            empty="You played your repertoire move every time. Nice!"
-            hint="Games where you played something else than your repertoire move."
-            findings={forgot}
-            ctx={ctx}
-          />
-          <FindingList
-            title="Mistakes right after your prep"
-            empty={pending ? 'Waiting for the engine…' : 'No engine-flagged mistakes where your lines end.'}
-            hint={`Your lines ended and your next move lost at least ${(settings.blunderThreshold / 100).toFixed(1)} pawns: extend the line with a better move.`}
-            findings={afterPrep}
-            ctx={ctx}
-          />
-        </div>
-        <div className="flex flex-col gap-4">
-          <FindingList
-            title="Punish these moves"
-            empty={pending ? 'Waiting for the engine…' : 'No engine-flagged opponent mistakes where they left your prep.'}
-            hint="Opponents left your preparation with a move the engine dislikes. Prepare the refutation."
-            findings={punish}
-            ctx={ctx}
-          />
-          <FindingList
-            title="Replies you have no answer to"
-            empty="Opponents never surprised you inside a repertoire."
-            hint="Opponent moves from your games that your repertoire doesn't answer, most frequent first."
-            findings={unprepared}
-            ctx={ctx}
-          />
-          <FindingList
-            title="Where your lines end"
-            empty="None of your lines ended during a game."
-            hint="Positions your games reached after your preparation ran out."
-            findings={ended}
-            ctx={ctx}
-          />
-          <FindingList
-            title="Not covered by a repertoire"
-            empty="Every game reached one of your repertoires."
-            hint="Openings you meet that no repertoire starts from."
-            findings={uncovered}
-            ctx={ctx}
-          />
-        </div>
-      </div>
-    </>
-  )
-}
-
-function Overview({ analyses }: { analyses: GameAnalysis[] }) {
-  const counts = new Map<Outcome, number>()
-  for (const a of analyses) counts.set(a.outcome, (counts.get(a.outcome) ?? 0) + 1)
-  const total = analyses.length || 1
-  const inRep = analyses.filter((a) => a.repertoireId)
-  const avg = inRep.length ? inRep.reduce((s, a) => s + a.ownMoves, 0) / inRep.length : 0
-  return (
-    <Section title={`${analyses.length} games`}>
-      <div className="mb-4 grid grid-cols-2 gap-3">
-        <Stat value={pct(inRep.length / total)} label="reached a repertoire" />
-        <Stat value={avg.toFixed(1)} label="of your moves in prep, on average" />
-      </div>
-      <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
-        {OUTCOMES.map((o) => {
-          const n = counts.get(o.outcome) ?? 0
-          return n ? <div key={o.outcome} className={o.cls} style={{ width: `${(n / total) * 100}%` }} title={o.label} /> : null
-        })}
-      </div>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-        {OUTCOMES.map((o) => (
-          <li key={o.outcome} className="flex items-center gap-1.5">
-            <span className={`inline-block h-2 w-2 rounded-sm ${o.cls}`} />
-            {o.label} <span className="font-semibold text-ink tabular-nums">{counts.get(o.outcome) ?? 0}</span>
-          </li>
-        ))}
-      </ul>
-    </Section>
-  )
-}
-
-interface RowContext {
-  lossOf: (f: Finding, m: FindingMove) => number | null | undefined
-  threshold: number
-  reps: Map<string, RepIndex['rep']>
-}
-
-function FindingList({
-  title,
-  hint,
-  empty,
-  findings,
-  ctx,
-}: {
-  title: string
-  hint: string
-  empty: string
-  findings: Finding[]
-  ctx: RowContext
-}) {
-  const [all, setAll] = useState(false)
-  const shown = all ? findings : findings.slice(0, LIST_SIZE)
-  return (
-    <Section title={title} right={
-        findings.length > 0 && (
-          <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-semibold text-muted tabular-nums">{findings.length}</span>
-        )
-      }
-    >
-      <p className="mb-3 text-xs leading-relaxed text-muted">{hint}</p>
-      {findings.length === 0 ? (
-        <p className="text-sm text-muted">{empty}</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {shown.map((f) => (
-            <FindingRow key={f.id} f={f} ctx={ctx} />
-          ))}
-        </ul>
-      )}
-      {findings.length > LIST_SIZE && (
-        <button className="chip mt-3" onClick={() => setAll(!all)}>
-          {all ? 'Show fewer' : `Show all ${findings.length}`}
-        </button>
-      )}
-    </Section>
-  )
-}
-
-function LossBadge({ loss, threshold, mine }: { loss: number | null | undefined; threshold: number; mine: boolean }) {
-  if (loss === undefined || loss === null || loss < threshold) return null
-  const text = loss >= 10000 ? 'mate' : `−${(loss / 100).toFixed(1)}`
-  return (
-    <span
-      className={`rounded px-1 text-[10px] font-semibold ${mine ? 'bg-bad/20 text-bad' : 'bg-accent/20 text-accent'}`}
-      title={mine ? 'Engine: your move loses this much' : 'Engine: their move loses this much'}
-    >
-      {text}
-    </span>
-  )
-}
-
-function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
-  const mine = f.mover === 'me'
-  const moveList = (
-    <span className="inline-flex flex-wrap gap-x-2">
-      {f.moves.map((m) => (
-        <span key={m.uci} className="inline-flex items-center gap-1">
-          <span className="font-semibold text-ink">{m.san}</span>
-          {f.moves.length > 1 && <span className="text-muted">×{m.games.length}</span>}
-          <LossBadge loss={ctx.lossOf(f, m)} threshold={ctx.threshold} mine={mine} />
-        </span>
-      ))}
-    </span>
-  )
-  let label: ReactNode
-  if (f.outcome === 'forgot')
-    label = (
-      <>
-        You played {moveList} instead of <span className="font-semibold text-accent">{f.expected?.san}</span>
-      </>
-    )
-  else if (f.outcome === 'opp-left') label = <>No answer prepared to {moveList}</>
-  else if (f.outcome === 'prep-ended') label = <>Line ended; {mine ? 'you' : 'they'} played {moveList}</>
-  else
-    label = (
-      <>
-        No {f.color} repertoire covers <span className="font-semibold text-ink">{formatMoves([...f.sans, f.moves[0].san])}</span>
-      </>
-    )
-
-  const rep = f.repertoireId ? ctx.reps.get(f.repertoireId) : undefined
-  // Where to prepare: where you have to choose, or after the opponent's move
-  // (the one the engine flags, if any, otherwise the most frequent).
-  const top = (!mine && f.moves.find((m) => (ctx.lossOf(f, m) ?? 0) >= ctx.threshold)) || f.moves[0]
-  let action: ReactNode = null
-  if (f.outcome === 'forgot' && rep)
-    action = (
-      <Link className="btn-ghost shrink-0 px-2.5 py-1 text-xs" to={`/train?mode=drill&rep=${rep.id}`}>
-        Drill
-      </Link>
-    )
-  else if (rep)
-    action = (
-      <Link
-        className="btn-ghost shrink-0 px-2.5 py-1 text-xs"
-        to={builderUrl(rep.id, mine ? f.path : [...f.path, top.uci])}
-      >
-        Prepare
-      </Link>
-    )
-  else
-    action = (
-      <Link
-        className="btn-ghost shrink-0 px-2.5 py-1 text-xs"
-        to={`/?newColor=${f.color}&newStart=${encodeURIComponent(formatMoves([...f.sans, top.san]))}`}
-      >
-        New repertoire
-      </Link>
-    )
-
-  return (
-    <li className="rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2 text-sm">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-muted">{formatMoves(f.sans) || 'Starting position'}</div>
-          <div className="text-muted">{label}</div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
-            {rep ? (
-              <span className="flex items-center gap-1">
-                <ColorDot color={rep.color} /> {rep.name}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <ColorDot color={f.color} /> as {f.color}
-              </span>
-            )}
-            <span>
-              {f.games.length} game{f.games.length === 1 ? '' : 's'}
-            </span>
-            <span className={scoreColor(f.score)}>score {pct(f.score)}</span>
-            <span>last {ago(f.lastPlayed)}</span>
-          </div>
-        </div>
-        {action}
-      </div>
-      <GameLinks games={f.games} />
-    </li>
-  )
-}
-
-function GameLinks({ games }: { games: Game[] }) {
-  return (
-    <details className="mt-1 text-xs">
-      <summary className="cursor-pointer text-muted hover:text-ink">Games ▾</summary>
-      <ul className="mt-1 flex flex-col gap-0.5">
-        {[...games]
-          .sort((a, b) => b.playedAt - a.playedAt)
-          .slice(0, 10)
-          .map((g) => (
-            <li key={g.id}>
-              <a href={g.url} target="_blank" rel="noreferrer" className="hover:underline">
-                <span className={g.result === 'win' ? 'text-accent' : g.result === 'loss' ? 'text-bad' : 'text-muted'}>
-                  {g.result === 'win' ? 'Won' : g.result === 'loss' ? 'Lost' : 'Drew'}
-                </span>{' '}
-                vs {g.opponent}
-                {g.opponentRating ? ` (${g.opponentRating})` : ''} · {g.speed} ·{' '}
-                {g.source === 'lichess' ? 'Lichess' : 'Chess.com'} · {new Date(g.playedAt).toLocaleDateString()}
-              </a>
-            </li>
-          ))}
-      </ul>
-    </details>
-  )
-}
-
-function ago(t: number): string {
-  const days = Math.floor((Date.now() - t) / DAY)
-  if (days < 1) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 60) return `${days} days ago`
-  return `${Math.round(days / 30.5)} months ago`
-}
