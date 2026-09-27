@@ -7,6 +7,7 @@ import { analyzeGame, collectFindings, summarizeByRepertoire } from './analyze'
 import { getSettings, setSetting } from '../../db/settings'
 import { IMPORT_VERSION, IMPORT_WINDOW_MS, importChesscom, importGames, importLichess, readNdjson } from './import'
 import { parseChesscomGame, parseLichessGame, sansToUci } from './parse'
+import { builderTarget, buildGameTree, moveMark, openingGroups, pathKeys, wdlOf } from './gameTree'
 
 let d: AppDB
 let n = 0
@@ -195,6 +196,89 @@ describe('gradeForgottenMoves', () => {
     await addLine(rep, uci('e4 e5 Nc3 Nf6 f4'), {}, d)
     const a = analyzeGame(game('white', 'e4 e5 Nc3 Nf6 d4'), await loadRepIndex(d))
     expect(await gradeForgottenMoves([a], d)).toBe(0)
+  })
+})
+
+describe('game tree', () => {
+  it('merges transpositions and sorts moves by frequency', () => {
+    const games = [
+      game('white', 'e4 e5 Nf3 Nc6'),
+      game('white', 'Nf3 Nc6 e4 e5', { result: 'loss' }),
+      game('white', 'e4 e5 Nc3', { result: 'draw' }),
+    ]
+    const tree = buildGameTree(games)
+    const [key] = pathKeys(uci('e4 e5 Nf3 Nc6')).slice(-1)
+    expect(tree.get(key)?.games).toHaveLength(2)
+    const after = tree.get(pathKeys(uci('e4 e5')).at(-1)!)!
+    expect(after.moves.map((m) => [m.san, m.games.length])).toEqual([
+      ['Nf3', 1],
+      ['Nc3', 1],
+    ])
+    expect(tree.get(pathKeys([]).at(-1)!)?.moves.map((m) => m.san)).toEqual(['e4', 'Nf3'])
+    expect(wdlOf(games)).toEqual({ win: 1, draw: 1, loss: 1 })
+  })
+
+  it('marks moves against the repertoire', async () => {
+    const rep = await createRepertoire('Vienna', 'white', d, uci('e4 e5 Nc3'))
+    await addLine(rep, uci('e4 e5 Nc3 Nf6 f4'), {}, d)
+    const reps = await loadRepIndex(d)
+    const at = (sans: string) => pathKeys(uci(sans)).at(-1)!
+    expect(moveMark(at('e4 e5 Nc3 Nf6'), uci('e4 e5 Nc3 Nf6 f4')[4], 'white', reps)).toBe('rep')
+    expect(moveMark(at('e4 e5 Nc3 Nf6'), uci('e4 e5 Nc3 Nf6 d4')[4], 'white', reps)).toBe('deviates')
+    expect(moveMark(at('e4 e5 Nc3'), uci('e4 e5 Nc3 Nc6')[3], 'white', reps)).toBe('unanswered')
+    // Before the start, after the line's end, or for the other colour: nothing to compare with.
+    expect(moveMark(at('e4 e5'), uci('e4 e5 Nf3')[2], 'white', reps)).toBe('none')
+    expect(moveMark(at('e4 e5 Nc3 Nf6 f4'), uci('e4 e5 Nc3 Nf6 f4 d5')[5], 'white', reps)).toBe('none')
+    expect(moveMark(at('e4 e5 Nc3 Nf6'), uci('e4 e5 Nc3 Nf6 f4')[4], 'black', reps)).toBe('none')
+  })
+
+  it('groups games by opening family, variation and name', async () => {
+    const rep = await createRepertoire('Vienna', 'white', d, uci('e4 e5 Nc3'))
+    await addLine(rep, uci('e4 e5 Nc3 Nf6 f4'), {}, d)
+    const reps = await loadRepIndex(d)
+    const names = new Map<string, { eco: string; name: string }>([
+      [pathKeys(uci('e4 e5 Nc3')).at(-1)!, { eco: 'C25', name: 'Vienna Game' }],
+      [pathKeys(uci('e4 e5 Nc3 Nf6 f4')).at(-1)!, { eco: 'C29', name: 'Vienna Game: Vienna Gambit' }],
+      [pathKeys(uci('e4 e5 Nc3 Nf6 f4 d5')).at(-1)!, { eco: 'C29', name: 'Vienna Game: Vienna Gambit, Main Line' }],
+    ])
+    const analyses = [
+      game('white', 'e4 e5 Nc3 Nf6 f4 d5'),
+      game('white', 'e4 e5 Nc3 Nf6 f4 exf4', { result: 'loss' }),
+      game('white', 'e4 e5 Nc3 Nf6 d4', { result: 'draw' }),
+      game('white', 'd4 d5'),
+    ].map((g) => analyzeGame(g, reps))
+    const groups = openingGroups(analyses, { opening: (k) => names.get(k) })
+    expect(groups.map((g) => [g.label, g.analyses.length])).toEqual([
+      ['Vienna Game', 3],
+      ['1. d4 d5', 1],
+    ])
+    const [vienna] = groups
+    expect(vienna.at).toEqual(uci('e4 e5 Nc3'))
+    expect(vienna.stats).toMatchObject({ games: 3, score: 0.5, inRep: 1, playedRight: 2 / 3 })
+    expect(vienna.children.map((g) => g.label)).toEqual(['Vienna Gambit'])
+    const [gambit] = vienna.children
+    expect(gambit.at).toEqual(uci('e4 e5 Nc3 Nf6 f4'))
+    expect(gambit.children.map((g) => [g.label, g.at.length])).toEqual([['Main Line', 6]])
+    expect(groups[1].stats).toMatchObject({ inRep: 0, playedRight: null })
+  })
+
+  it('finds where to prepare a line', async () => {
+    const rep = await createRepertoire('Vienna', 'white', d, uci('e4 e5 Nc3'))
+    await addLine(rep, uci('e4 e5 Nc3 Nf6 f4'), {}, d)
+    const reps = await loadRepIndex(d)
+    const target = (sans: string) => {
+      const p = sansToUci(sans ? sans.split(' ') : [])
+      return builderTarget(p.moves, p.sans, 'white', reps)
+    }
+    expect(target('e4 e5 Nc3 Nf6')).toMatchObject({ kind: 'builder', past: false, url: `/rep/${rep.id}/build?m=${uci('e4 e5 Nc3 Nf6').join(',')}` })
+    // Past the end of a line, and reached by another move order: the repertoire's order, then the game's moves.
+    expect(target('Nc3 Nf6 e4 e5 f4 d5')).toMatchObject({
+      kind: 'builder',
+      past: true,
+      url: `/rep/${rep.id}/build?m=${uci('e4 e5 Nc3 Nf6 f4 d5').join(',')}`,
+    })
+    expect(target('e4')).toMatchObject({ kind: 'plan', url: `/plan/white?at=${uci('e4').join(',')}` })
+    expect(target('e4 c5')).toMatchObject({ kind: 'new', url: `/?newColor=white&newStart=${encodeURIComponent('1. e4 c5')}` })
   })
 })
 

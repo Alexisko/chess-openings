@@ -12,3 +12,10 @@ export function scoreTone(x: number) {
   if (x >= 0.4) return 'var(--color-warn)'
   return 'var(--color-bad)'
 }
+
+/** Colour for a game score (50% is par, unlike preparedness scores). */
+export function resultColor(x: number) {
+  if (x >= 0.55) return 'text-accent'
+  if (x > 0.45) return 'text-ink'
+  return 'text-bad'
+}
