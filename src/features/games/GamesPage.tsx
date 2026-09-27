@@ -11,8 +11,10 @@ import { importGames, type ImportProgress } from '../../lib/games/import'
 import { GAME_SPEEDS } from '../../lib/games/parse'
 import { confirmDialog } from '../../lib/dialog'
 import { gamesParams, type GamesTab } from '../../lib/routes'
+import { useMediaQuery } from '../../lib/useMediaQuery'
 import { Findings } from './Findings'
 import { GameExplorer } from './GameExplorer'
+import { OpeningMap } from './OpeningMap'
 import { OpeningOverview } from './OpeningOverview'
 
 const DAY = 24 * 3600 * 1000
@@ -25,6 +27,7 @@ const PERIODS = [
 
 const TABS: { id: GamesTab; label: string }[] = [
   { id: 'overview', label: 'Openings' },
+  { id: 'map', label: 'Map' },
   { id: 'explorer', label: 'Explorer' },
   { id: 'findings', label: 'Findings' },
 ]
@@ -40,7 +43,10 @@ export function GamesPage() {
   const [speeds, setSpeeds] = useState<GameSpeed[]>(GAME_SPEEDS)
   // Tab, colour and explorer line live in the URL, so links can open them and Back works.
   const [params, setParams] = useSearchParams()
-  const tab: GamesTab = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'overview'
+  // The map needs a wide screen: on phones its tab is hidden and a link to it opens the Openings list.
+  const mapFits = useMediaQuery('(min-width: 768px)')
+  const asked = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'overview'
+  const tab: GamesTab = asked === 'map' && !mapFits ? 'overview' : asked
   const color: Color = params.get('color') === 'black' ? 'black' : 'white'
   const at = useMemo(() => params.get('at')?.split(',').filter(Boolean) ?? [], [params])
   const go = (next: { tab?: GamesTab; color?: Color; at?: string[] }, replace = false) =>
@@ -106,7 +112,7 @@ export function GamesPage() {
                   key={t.id}
                   role="tab"
                   aria-selected={tab === t.id}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
+                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${t.id === 'map' && !mapFits ? 'hidden' : ''} ${
                     tab === t.id ? 'border-brass text-ink' : 'border-transparent text-muted hover:text-ink'
                   }`}
                   onClick={() => go({ tab: t.id })}
@@ -140,6 +146,9 @@ export function GamesPage() {
               reps={reps}
               onExplore={(line) => go({ tab: 'explorer', at: line })}
             />
+          )}
+          {tab === 'map' && (
+            <OpeningMap analyses={ofColor} color={color} reps={reps} onExplore={(line) => go({ tab: 'explorer', at: line })} />
           )}
           {tab === 'explorer' && (
             <GameExplorer analyses={ofColor} color={color} reps={reps} at={at} onGo={(line) => go({ at: line }, true)} />

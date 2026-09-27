@@ -14,7 +14,7 @@ export function trainUrl(mode: 'review' | 'learn' | 'drill', repId: string, chap
   return `/train?mode=${mode}&rep=${repId}${chapter?.node.uci ? `&chapter=${chapter.id}` : ''}`
 }
 
-export type GamesTab = 'overview' | 'explorer' | 'findings'
+export type GamesTab = 'overview' | 'map' | 'explorer' | 'findings'
 
 /** Query of the games page: a tab, the colour, and (for the explorer) a line of moves. */
 export function gamesParams(tab: GamesTab, color: 'white' | 'black', at: string[] = []) {

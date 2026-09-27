@@ -48,16 +48,17 @@ export function OpeningOverview({ analyses, color, reps, onExplore }: Props) {
         {!groups ? (
           <div className="h-24 animate-pulse rounded-lg bg-surface-2" />
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-left text-[11px] tracking-wide text-faint uppercase">
+          // From sm up, a fixed layout: the name column takes what the others leave instead of squeezing them.
+          <table className="w-full text-sm sm:table-fixed">
+            <thead className="text-left text-[11px] tracking-wide whitespace-nowrap text-faint uppercase">
               <tr>
                 <th className="font-normal">Opening</th>
-                <th className="w-12 text-right font-normal sm:w-14">Games</th>
-                <th className="w-14 pl-3 font-normal sm:w-36">Score</th>
-                <th className="hidden text-right font-normal sm:table-cell sm:w-16">In rep</th>
-                <th className="hidden text-right font-normal sm:table-cell sm:w-16">Right</th>
-                <th className="hidden text-right font-normal lg:table-cell lg:w-14">Prep</th>
-                <th />
+                <th className="w-12 text-right font-normal sm:w-16">Games</th>
+                <th className="w-14 pl-3 font-normal sm:w-16 lg:w-44 lg:pl-5">Score</th>
+                <th className="hidden w-16 text-right font-normal sm:table-cell lg:w-20">In rep</th>
+                <th className="hidden w-16 text-right font-normal sm:table-cell lg:w-20">Right</th>
+                <th className="hidden w-16 text-right font-normal sm:table-cell">Prep</th>
+                <th className="sm:w-20 lg:w-24" />
               </tr>
             </thead>
             <tbody>
@@ -123,7 +124,7 @@ function GroupRow({
   return (
     <>
       <tr className={`${depth ? 'border-t border-line/40' : 'border-t border-line/70'} align-middle`}>
-        <td className="w-full max-w-0 py-2 pr-2" style={{ paddingLeft: depth * 14 }}>
+        <td className="w-full max-w-0 py-2 pr-2 sm:w-auto sm:max-w-none" style={{ paddingLeft: depth * 14 }}>
           <div className="flex min-w-0 items-center gap-1.5">
             {g.children.length ? (
               <button
@@ -151,15 +152,15 @@ function GroupRow({
           </div>
         </td>
         <td className="text-right tabular-nums">{s.games}</td>
-        <td className="pl-3">
-          <div className="flex items-center gap-2">
-            <ResultBar {...s.wdl} className="hidden flex-1 sm:flex" />
+        <td className="pl-3 lg:pl-5">
+          <div className="flex items-center gap-2.5">
+            <ResultBar {...s.wdl} className="hidden flex-1 lg:flex" />
             <span className={`w-9 shrink-0 text-right font-medium tabular-nums ${resultColor(s.score)}`}>{pct(s.score)}</span>
           </div>
         </td>
         <td className="hidden text-right tabular-nums sm:table-cell">{s.inRep ? pct(s.inRep) : <span className="text-faint">–</span>}</td>
         <td className="hidden text-right tabular-nums sm:table-cell">{right}</td>
-        <td className="hidden text-right text-muted tabular-nums lg:table-cell">
+        <td className="hidden text-right text-muted tabular-nums sm:table-cell">
           {s.avgOwnMoves === null ? <span className="text-faint">–</span> : s.avgOwnMoves.toFixed(1)}
         </td>
         <td className="pl-3 text-right">

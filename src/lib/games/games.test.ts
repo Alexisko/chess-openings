@@ -8,6 +8,7 @@ import { getSettings, setSetting } from '../../db/settings'
 import { IMPORT_VERSION, IMPORT_WINDOW_MS, importChesscom, importGames, importLichess, readNdjson } from './import'
 import { parseChesscomGame, parseLichessGame, sansToUci } from './parse'
 import { builderTarget, buildGameTree, moveMark, openingGroups, pathKeys, wdlOf } from './gameTree'
+import { buildOpeningMap, defaultMinGames, edgeMoves, layoutMap, mapNodes } from './openingMap'
 
 let d: AppDB
 let n = 0
@@ -279,6 +280,63 @@ describe('game tree', () => {
     })
     expect(target('e4')).toMatchObject({ kind: 'plan', url: `/plan/white?at=${uci('e4').join(',')}` })
     expect(target('e4 c5')).toMatchObject({ kind: 'new', url: `/?newColor=white&newStart=${encodeURIComponent('1. e4 c5')}` })
+  })
+})
+
+describe('opening map', () => {
+  it('keeps the branch points, collapses chains and drops rare branches', async () => {
+    const rep = await createRepertoire('Vienna', 'white', d, uci('e4 e5 Nc3'))
+    await addLine(rep, uci('e4 e5 Nc3 Nf6 f4'), {}, d)
+    const reps = await loadRepIndex(d)
+    const names = new Map<string, { eco: string; name: string }>([
+      [pathKeys(uci('e4 e5 Nc3')).at(-1)!, { eco: 'C25', name: 'Vienna Game' }],
+      [pathKeys(uci('e4 e5 Nc3 Nf6 f4')).at(-1)!, { eco: 'C29', name: 'Vienna Game: Vienna Gambit' }],
+    ])
+    const games = [
+      game('white', 'e4 e5 Nc3 Nf6 f4 d5 fxe5'),
+      game('white', 'e4 e5 Nc3 Nf6 f4 d5 fxe5', { result: 'loss' }),
+      game('white', 'e4 e5 Nc3 Nf6 d4 exd4', { result: 'draw' }),
+      game('white', 'e4 e5 Nc3 Nf6 d4 exd4'),
+      game('white', 'e4 c5 Nf3 d6'),
+      game('white', 'e4 c5 Nf3 Nc6'),
+      game('white', 'd4 d5'),
+    ]
+    const root = buildOpeningMap(games, 'white', reps, { opening: (k) => names.get(k) }, 2)!
+    const line = (n: { sans: string[] }) => n.sans.join(' ')
+    expect(root.games).toHaveLength(7)
+    // 1.d4 has a single game: left out.
+    expect(root.rare).toBe(1)
+    // 1.e4 is played in every shown game, so it's collapsed into the edge to the first split.
+    const [e4] = root.children
+    expect(line(e4)).toBe('e4')
+    expect(e4.children.map(line)).toEqual(['e4 e5 Nc3 Nf6', 'e4 c5 Nf3'])
+    const [vienna, sicilian] = e4.children
+    expect(edgeMoves(vienna)).toBe('1... e5 2. Nc3 Nf6')
+    expect(vienna.newName).toBe('Vienna Game')
+    // Chains run on to where the games stop agreeing.
+    expect(vienna.children.map(line)).toEqual(['e4 e5 Nc3 Nf6 f4 d5 fxe5', 'e4 e5 Nc3 Nf6 d4 exd4'])
+    const [gambit, d4] = vienna.children
+    expect(gambit).toMatchObject({ mark: 'right', newName: 'Vienna Gambit', score: 0.5 })
+    expect(d4.mark).toBe('deviated')
+    expect(d4.opening).toBe('Vienna Game')
+    expect(d4.newName).toBeUndefined()
+    // 2...Nc6 and 2...d6 have one game each: the Sicilian is a leaf.
+    expect(sicilian).toMatchObject({ children: [], rare: 2, mark: 'none' })
+    expect(mapNodes(root)).toHaveLength(6)
+
+    const layout = layoutMap(root, () => 40)
+    const at = (n: object) => layout.nodes.find((p) => p.node === n)!
+    // The main line runs straight; sidelines drop below it, one row per leaf.
+    expect(at(root).y).toBe(at(gambit).y)
+    expect(at(d4).y).toBeGreaterThan(at(gambit).y)
+    expect(at(sicilian).y).toBeGreaterThan(at(d4).y)
+    expect(at(gambit).x).toBeGreaterThan(at(vienna).x)
+    expect(layout.height).toBeGreaterThan(3 * 40)
+    // Labels start clear of the node they leave, whether straight on or after a bend.
+    expect(at(e4).labelX).toBeGreaterThan(at(root).x + at(root).r)
+    expect(at(sicilian).labelX).toBeGreaterThan(at(e4).x)
+
+    expect(defaultMinGames(games, 'white', reps, 2)).toBe(3)
   })
 })
 
