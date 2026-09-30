@@ -4,7 +4,7 @@ import { addLine, createRepertoire, loadMoves } from '../../db/repertoire'
 import { recordAttempt } from '../../db/reviews'
 import { AppDB } from '../../db/schema'
 import { buildGraph, enumerateLines, type Line } from '../chess/graph'
-import { planDrill, planLearn, planReview, type CardMap } from './plan'
+import { MOVE_LEAD_IN, planLearn, planReview, planTrain, weightedSample, type CardMap, type TrainPool } from './plan'
 import { gradeCard, isDue, State } from './scheduler'
 import { LineRun } from './session'
 
@@ -22,8 +22,6 @@ describe('planning', () => {
     c = gradeCard(c, true, new Date('2026-09-01')).card
     return { ...c, state: State.Review, due: new Date(now.getTime() + dueInDays * 86400e3) }
   }
-  /** A well-known card: just reviewed, long memory, not weak. */
-  const strong = () => ({ ...learned(30), last_review: now, stability: 100 })
 
   it('covers all due cards with as few lines as possible', () => {
     const cards: CardMap = new Map([
@@ -47,30 +45,6 @@ describe('planning', () => {
     const lines = [line('1', ['a']), line('2', ['b']), line('3', ['c'])]
     const runs = planLearn(lines, cards, 2, (l) => (l.id === '3' ? 10 : 1))
     expect(runs.map((r) => r.line.id)).toEqual(['3', '1'])
-  })
-
-  it('drills weak cards starting two moves earlier', () => {
-    const weak = { ...learned(-30), lapses: 3 }
-    const cards: CardMap = new Map([
-      ['x', strong()],
-      ['y', weak],
-    ])
-    const l: Line = {
-      id: 'l',
-      moves: [
-        { byMe: true, fromKey: 'x' },
-        { byMe: false },
-        { byMe: true, fromKey: 'p' },
-        { byMe: false },
-        { byMe: true, fromKey: 'q' },
-        { byMe: false },
-        { byMe: true, fromKey: 'y' },
-      ] as never,
-      cardKeys: ['x', 'p', 'q', 'y'],
-      end: 'leaf',
-    }
-    const runs = planDrill([l], cards, now)
-    expect(runs[0]).toMatchObject({ startPly: 2, endPly: 7, focus: ['y'] })
   })
 
   /** A line of `plies` moves, the owner's at even plies with card keys `${prefix}${ply}`. */
@@ -101,15 +75,45 @@ describe('planning', () => {
     ])
   })
 
-  it('drills weak cards on the same line in one run', () => {
-    const l = chain('l', 12)
-    const cards: CardMap = new Map(l.cardKeys.map((k) => [k, strong()]))
-    cards.set('4', { ...learned(-30), lapses: 3 })
-    cards.set('8', { ...learned(-30), lapses: 2 })
-    const runs = planDrill([l], cards, now)
-    expect(runs).toHaveLength(1)
-    expect(runs[0]).toMatchObject({ startPly: 0, endPly: 9 })
-    expect(runs[0].focus.sort()).toEqual(['4', '8'])
+  it('trains single moves from a short lead-in, never moves not learned', () => {
+    const l = chain('l', 14)
+    const weakness = new Map(l.cardKeys.filter((k) => k !== '12').map((k) => [k, 0]))
+    const items = planTrain([{ lines: [l], weakness }], 'moves', 50, now)
+    expect(items).toHaveLength(l.cardKeys.length - 1)
+    expect(items.map((i) => i.run.focus[0])).not.toContain('12')
+    const eight = items.find((i) => i.run.focus[0] === '8')!.run
+    expect(eight).toMatchObject({ startPly: 8 - MOVE_LEAD_IN, endPly: 9 })
+  })
+
+  it('trains whole lines, asking a shared start only once', () => {
+    const a = chain('a', 16, 'a')
+    const b = chain('b', 16, 'b')
+    const keys = [...new Set([...a.cardKeys, ...b.cardKeys])]
+    const pool: TrainPool = { lines: [a, b], weakness: new Map(keys.map((k) => [k, 0])) }
+    const items = planTrain([pool], 'lines', 5, now)
+    expect(items.map((i) => [i.run.line.id, i.run.startPly, i.run.focus])).toEqual([
+      ['a', 0, a.cardKeys],
+      ['b', 6, ['b10', 'b12', 'b14']],
+    ])
+  })
+
+  it('draws weak moves more often, but any move can come up', () => {
+    const l = chain('l', 40)
+    const weakness = new Map(l.cardKeys.map((k) => [k, k === '10' ? 1 : 0]))
+    const lastAsked = new Map(l.cardKeys.map((k) => [k, now.getTime()]))
+    let seed = 1
+    const rng = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+    const seen = new Map<string, number>()
+    for (let i = 0; i < 400; i++)
+      for (const it of planTrain([{ lines: [l], weakness, lastAsked }], 'moves', 3, now, rng))
+        seen.set(it.run.focus[0], (seen.get(it.run.focus[0]) ?? 0) + 1)
+    expect(seen.size).toBe(l.cardKeys.length)
+    const others = [...seen].filter(([k]) => k !== '10').map(([, n]) => n)
+    expect(seen.get('10')!).toBeGreaterThan(3 * Math.max(...others))
+  })
+
+  it('samples without replacement', () => {
+    expect(weightedSample([1, 2, 3], () => 1, 5).sort()).toEqual([1, 2, 3])
   })
 
   it('learns a new branch from near the branch point', () => {

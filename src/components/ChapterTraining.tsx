@@ -2,12 +2,12 @@ import { Link } from 'react-router'
 import type { Card as FsrsCard } from 'ts-fsrs'
 import type { Repertoire } from '../db/schema'
 import { chapterNodes, type Chapter } from '../lib/openings/chapters'
-import { trainUrl } from '../lib/routes'
+import { chapterTrainUrl } from '../lib/routes'
 import { isDue, isNew } from '../lib/srs/scheduler'
 import { pct, scoreColor } from './format'
 import { BookIcon, TargetIcon, TrainIcon } from './icons'
 
-/** Review / Learn / Drill for one chapter (with its sub-chapters), with its preparedness. */
+/** Review / Learn / Train for one chapter (with its sub-chapters), with its preparedness. */
 export function ChapterTraining({
   rep,
   chapter,
@@ -35,14 +35,14 @@ export function ChapterTraining({
           {compact ? 'Prep' : 'Prepared'} <span className={`font-semibold tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>
         </span>
       )}
-      <Link className={`${btn} ${due ? '' : 'pointer-events-none opacity-40'}`} to={trainUrl('review', rep.id, chapter)}>
+      <Link className={`${btn} ${due ? '' : 'pointer-events-none opacity-40'}`} to={chapterTrainUrl('review', rep.id, chapter)}>
         <TrainIcon size={14} /> Review{due > 0 && <span className="tabular-nums text-brass">{due}</span>}
       </Link>
-      <Link className={`${btn} ${fresh ? '' : 'pointer-events-none opacity-40'}`} to={trainUrl('learn', rep.id, chapter)}>
+      <Link className={`${btn} ${fresh ? '' : 'pointer-events-none opacity-40'}`} to={chapterTrainUrl('learn', rep.id, chapter)}>
         <BookIcon size={14} /> Learn{fresh > 0 && <span className="tabular-nums text-brass">{fresh}</span>}
       </Link>
-      <Link className={btn} to={trainUrl('drill', rep.id, chapter)}>
-        <TargetIcon size={14} /> Drill
+      <Link className={btn} to={chapterTrainUrl('train', rep.id, chapter)} title="Test any move you have learned, weak ones more often">
+        <TargetIcon size={14} /> Train
       </Link>
     </div>
   )

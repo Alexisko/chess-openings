@@ -4,6 +4,8 @@ import type { Card as FsrsCard } from 'ts-fsrs'
 import { crossIndex, type CrossIndex } from '../lib/chess/cross'
 import { buildGraph, enumerateLines, type Line, type RepGraph } from '../lib/chess/graph'
 import { repStart } from '../lib/chess/start'
+import type { MoveRecord } from '../lib/srs/knowledge'
+import { loadMoveRecords } from './reviews'
 import { db, type Card, type RepMove, type Repertoire } from './schema'
 
 export interface RepertoireData {
@@ -59,4 +61,9 @@ export function useCrossIndex(rep: Repertoire | undefined): CrossIndex | undefin
     )
   }, [id, color])
   return useMemo(() => raw && crossIndex(raw), [raw])
+}
+
+/** Live record of your answers per position of a repertoire. */
+export function useMoveRecords(id: string | undefined): Map<string, MoveRecord> | undefined {
+  return useLiveQuery(() => (id ? loadMoveRecords(id) : new Map<string, MoveRecord>()), [id])
 }

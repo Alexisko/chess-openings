@@ -73,8 +73,11 @@ export interface Card {
   updatedAt: number
 }
 
-/** 'game' logs come from imported games (a wrong move played in a real game). */
-export type ReviewMode = 'learn' | 'review' | 'drill' | 'game'
+/**
+ * 'game' logs come from imported games (a wrong move played in a real game).
+ * 'drill' logs are from the weak-spot drill that 'train' replaced.
+ */
+export type ReviewMode = 'learn' | 'review' | 'train' | 'drill' | 'game'
 
 export interface ReviewLog {
   id: string
