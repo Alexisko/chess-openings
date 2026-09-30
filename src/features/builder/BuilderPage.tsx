@@ -462,7 +462,20 @@ export function BuilderPage() {
                 share={shareOf}
                 extra={(ch) => {
                   const sc = chapterScore(ch)
-                  return sc !== undefined && <span className={scoreColor(sc)} title="Prepared">{pct(sc)}</span>
+                  const bu = chapterScore(ch, true)
+                  return (
+                    sc !== undefined &&
+                    bu !== undefined && (
+                      <>
+                        <span title="Built: how complete this chapter is to your target move">
+                          Built <span className={scoreColor(bu)}>{pct(bu)}</span>
+                        </span>
+                        <span title="Prep: how well you remember it, to your target move">
+                          Prep <span className={scoreColor(sc)}>{pct(sc)}</span>
+                        </span>
+                      </>
+                    )
+                  )
                 }}
               />
             </div>
