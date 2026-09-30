@@ -15,7 +15,7 @@ import { parseMoves, repStart } from '../../lib/chess/start'
 import { planScore, type CoveredNode, type RepScore } from '../../lib/plan/plan'
 import { useLineScore, usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
-import { builderUrl, planUrl } from '../../lib/routes'
+import { builderUrl, planUrl, trainUrl } from '../../lib/routes'
 import { confirmOverlap } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 
@@ -81,8 +81,8 @@ export function HomePage() {
                 <Link to="/train?mode=learn" className={`btn-ghost ${newLeft ? '' : 'pointer-events-none opacity-40'}`}>
                   <BookIcon size={16} /> Learn new
                 </Link>
-                <Link to="/train?mode=drill" className="btn-ghost">
-                  <TargetIcon size={16} /> Drill weak spots
+                <Link to={trainUrl('train')} className="btn-ghost" title="Test any move you have learned, weak ones more often">
+                  <TargetIcon size={16} /> Train
                 </Link>
               </div>
             </div>
@@ -129,9 +129,20 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
         </span>
       }
       right={
-        <Link to={planUrl(color)} className="flex items-center gap-1 text-xs font-medium text-muted hover:text-brass">
-          Plan <ArrowRight size={13} />
-        </Link>
+        <span className="flex items-center gap-3">
+          {reps.length > 0 && (
+            <Link
+              to={trainUrl('train', { color })}
+              className="flex items-center gap-1 text-xs font-medium text-muted hover:text-brass"
+              title={`Train your ${COLOR_NAME[color]} repertoires`}
+            >
+              <TargetIcon size={13} /> Train
+            </Link>
+          )}
+          <Link to={planUrl(color)} className="flex items-center gap-1 text-xs font-medium text-muted hover:text-brass">
+            Plan <ArrowRight size={13} />
+          </Link>
+        </span>
       }
     >
       {plan?.empty ? (

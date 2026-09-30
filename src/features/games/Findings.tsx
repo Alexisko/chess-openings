@@ -15,7 +15,7 @@ import {
   type RepIndex,
 } from '../../lib/games/analyze'
 import { lossKey, useMoveLosses, type LossTarget } from '../../lib/games/moveLoss'
-import { builderUrl } from '../../lib/routes'
+import { builderUrl, trainUrl } from '../../lib/routes'
 
 const DAY = 24 * 3600 * 1000
 /** Engine checks are limited to the most frequent deviations. */
@@ -278,8 +278,8 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
   let action: ReactNode = null
   if (f.outcome === 'forgot' && rep)
     action = (
-      <Link className="btn-ghost shrink-0 px-2.5 py-1 text-xs" to={`/train?mode=drill&rep=${rep.id}`}>
-        Drill
+      <Link className="btn-ghost shrink-0 px-2.5 py-1 text-xs" to={trainUrl('train', { repId: rep.id })}>
+        Train
       </Link>
     )
   else if (rep)

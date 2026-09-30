@@ -13,7 +13,7 @@ import {
   setRepertoirePaused,
 } from '../../db/repertoire'
 import { useSettings } from '../../db/settings'
-import { useRepertoire, type RepertoireData } from '../../db/useRepertoire'
+import { useMoveRecords, useRepertoire, type RepertoireData } from '../../db/useRepertoire'
 import { graphToPgn, pgnToLines } from '../../lib/chess/pgn'
 import { formatMoves, replay } from '../../lib/chess/position'
 import { repStart } from '../../lib/chess/start'
@@ -24,9 +24,12 @@ import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapters'
 import { renameChapter } from '../../lib/openings/renameChapter'
 import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
-import { builderUrl, planUrl } from '../../lib/routes'
+import { builderUrl, planUrl, trainUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
+import { describeRecord, emptyCounts, knowledgeOf, weakness } from '../../lib/srs/knowledge'
+import { myMove, pathTo } from '../../lib/chess/graph'
+import { KnowledgeBar, KnowledgeChip } from '../../components/Knowledge'
 
 const GAP_LABEL: Record<Gap['kind'], string> = {
   'unprepared-reply': 'No answer prepared',
@@ -100,8 +103,8 @@ export function RepertoirePage() {
             <Link className={`btn-ghost ${fresh ? '' : 'pointer-events-none opacity-40'}`} to={`/train?mode=learn&rep=${rep.id}`}>
               <BookIcon size={15} /> Learn <Count n={fresh} />
             </Link>
-            <Link className="btn-ghost" to={`/train?mode=drill&rep=${rep.id}`}>
-              <TargetIcon size={15} /> Drill
+            <Link className="btn-ghost" to={trainUrl('train', { repId: rep.id })} title="Test any move you have learned, weak ones more often">
+              <TargetIcon size={15} /> Train
             </Link>
           </div>
         </div>
@@ -109,7 +112,7 @@ export function RepertoirePage() {
           <Toggle label="Include in daily training" checked={!rep.paused} onChange={(on) => setRepertoirePaused(rep.id, !on)} />
           {rep.paused && (
             <span className="text-xs text-faint">
-              Paused: left out of Review, Learn and Drill on Home. The buttons above still train it.
+              Paused: left out of Review, Learn and Train on Home. The buttons above still train it.
             </span>
           )}
         </div>
@@ -190,6 +193,8 @@ export function RepertoirePage() {
           )}
         </Section>
       </div>
+
+      <MoveKnowledge data={data} />
 
       <PgnTools data={data} />
 
@@ -285,6 +290,77 @@ function ChapterSection({ data, prep }: { data: RepertoireData; prep: PrepState 
   )
 }
 
+/** How well you know each of your moves, and the ones that need work most. */
+function MoveKnowledge({ data }: { data: RepertoireData }) {
+  const records = useMoveRecords(data.rep.id)
+  const [all, setAll] = useState(false)
+  if (!records || !data.cards.length) return null
+  const now = new Date()
+  const start = repStart(data.rep)
+  const counts = emptyCounts()
+  const rows = data.cards.map((c) => {
+    const rec = records.get(c.positionKey)
+    const level = knowledgeOf(c.fsrs, rec, now)
+    counts[level]++
+    return { key: c.positionKey, level, rec, w: weakness(c.fsrs, rec, now) }
+  })
+  const weak = rows.filter((r) => r.level === 'shaky' || r.level === 'learning').sort((a, b) => b.w - a.w)
+  const shown = all ? weak : weak.slice(0, 6)
+  return (
+    <Section
+      title="Move knowledge"
+      right={
+        <Link className="btn-ghost px-2.5 py-1 text-xs" to={trainUrl('train', { repId: data.rep.id })}>
+          <TargetIcon size={14} /> Train
+        </Link>
+      }
+    >
+      <p className="mb-3 text-xs leading-relaxed text-muted">
+        From your answers in Review, Learn and Train and your imported games: how many times in a row you played each move
+        right, and whether you missed it recently. A mistake stops counting once you have played the move right a few times
+        since.
+      </p>
+      <KnowledgeBar counts={counts} />
+      {weak.length > 0 && (
+        <>
+          <div className="eyebrow mt-5 mb-2">Needs work</div>
+          <ul className="grid gap-2 md:grid-cols-2">
+            {shown.map((r) => {
+              const path = pathTo(data.graph, r.key)
+              const own = myMove(data.graph, r.key)
+              const moves = [...path, ...(own ? [own] : [])]
+              const sans = [...start.sans, ...moves.map((m) => m.san)]
+              return (
+                <li key={r.key}>
+                  <Link
+                    to={builderUrl(data.rep.id, [...start.moves, ...path.map((m) => m.uci)])}
+                    className="flex items-center gap-3 rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2 transition hover:border-line-strong"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-display text-[15px]" title={formatMoves(sans)}>
+                        {formatMoves(sans)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                        <KnowledgeChip level={r.level} />
+                        <span className="tabular-nums">{describeRecord(r.rec)}</span>
+                      </div>
+                    </div>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+          {weak.length > shown.length && (
+            <button className="mt-2 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setAll(true)}>
+              Show all {weak.length}
+            </button>
+          )}
+        </>
+      )}
+    </Section>
+  )
+}
+
 function GapList({ data, gaps }: { data: RepertoireData; gaps: PrepGap[] }) {
   return (
     <ul className="flex flex-col gap-2 text-sm">
@@ -309,7 +385,7 @@ function GapList({ data, gaps }: { data: RepertoireData; gaps: PrepGap[] }) {
             </div>
             <Link
               className={`${train ? 'btn-ghost' : 'btn-primary'} shrink-0 px-2.5 py-1 text-xs`}
-              to={train ? `/train?mode=${g.kind === 'weak' ? 'drill' : 'learn'}&rep=${g.rep.id}` : builderUrl(g.rep.id, uci)}
+              to={train ? trainUrl(g.kind === 'weak' ? 'train' : 'learn', { repId: g.rep.id }) : builderUrl(g.rep.id, uci)}
             >
               {train ? 'Train' : 'Prepare'}
             </Link>

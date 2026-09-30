@@ -41,9 +41,15 @@ are against the moves real opponents play.
 - **Training (FSRS):**
   - *Learn* plays a new line with hints, then asks you to replay it from memory.
   - *Review* replays lines from the start and covers every due card with as few lines as possible.
-  - *Drill* starts two moves before your weakest positions.
+  - *Train* (replaces the old weak-spot drill) tests any learned move, due or not, for everything, one colour,
+    a repertoire or a chapter. Choose *Moves* (single positions after a two-move lead-in) or *Lines* (whole
+    lines, a shared start asked once). Moves you missed recently or haven't been asked for a while come up
+    more often; a missed move comes back a few questions later, ungraded.
+  - Every answer shows how well you know the move (*Shaky / Learning / Solid / Mastered*, with your streak and
+    hit rate), and the repertoire page lists the moves that need work. Old mistakes stop counting once
+    you've played the move right a few times since.
   - Any move other than your repertoire move counts as wrong.
-  - A chapter can be trained on its own (Review / Learn / Drill from the builder or the repertoire page).
+  - A chapter can be trained on its own (Review / Learn / Train from the builder or the repertoire page).
   - After an opponent move marked ? or ??, training asks you to find the move that punishes it.
   - *Explain moves* (a switch next to the score, remembered per device) pauses after each correct move to show
     what it threatens and does, until you continue. It's never shown once you're answering again, where it

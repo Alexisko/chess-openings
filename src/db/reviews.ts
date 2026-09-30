@@ -1,3 +1,4 @@
+import { recordsFromLogs, type MoveRecord } from '../lib/srs/knowledge'
 import { gradeCard, isDue, isNew } from '../lib/srs/scheduler'
 import { db, now, uuid, type AppDB, type ReviewMode } from './schema'
 
@@ -35,4 +36,16 @@ export async function learnedToday(d: AppDB = db): Promise<number> {
   start.setHours(0, 0, 0, 0)
   const logs = await d.reviews.where('ts').aboveOrEqual(start.getTime()).toArray()
   return new Set(logs.filter((l) => l.mode === 'learn').map((l) => l.cardId)).size
+}
+
+/** Your answers at each of a repertoire's positions (by position key). */
+export async function loadMoveRecords(repertoireId: string, d: AppDB = db): Promise<Map<string, MoveRecord>> {
+  const [cards, logs] = await Promise.all([d.cards.where({ repertoireId }).toArray(), d.reviews.where({ repertoireId }).toArray()])
+  const byCard = recordsFromLogs(logs)
+  const out = new Map<string, MoveRecord>()
+  for (const c of cards) {
+    const r = byCard.get(c.id)
+    if (r) out.set(c.positionKey, r)
+  }
+  return out
 }
