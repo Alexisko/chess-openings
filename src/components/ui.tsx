@@ -87,26 +87,49 @@ export function ColorDot({ color, size = 12 }: { color: 'white' | 'black'; size?
   )
 }
 
-/** Circular gauge for a 0–1 score, coloured from oxblood to moss. */
+/**
+ * Circular gauge for a 0–1 score, coloured from oxblood to moss. `under` is a
+ * second score drawn behind it in a lighter shade (e.g. built behind remembered).
+ */
 export function ScoreRing({
   value,
+  under,
   size = 48,
   stroke = 4,
   label,
+  title,
 }: {
   value: number | null | undefined
+  under?: number
   size?: number
   stroke?: number
   label?: ReactNode
+  title?: string
 }) {
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const v = value ?? 0
   const tone = value === null || value === undefined ? 'var(--color-faint)' : scoreTone(v)
+  const offset = (x: number) => c * (1 - Math.max(0, Math.min(1, x)))
   return (
-    <div className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }}>
+    <div className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }} title={title}>
       <svg width={size} height={size} className="-rotate-90" aria-hidden>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} />
+        {under !== undefined && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={tone}
+            strokeOpacity={0.3}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={offset(under)}
+            className="transition-[stroke-dashoffset] duration-700 ease-out"
+          />
+        )}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -116,7 +139,7 @@ export function ScoreRing({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
-          strokeDashoffset={c * (1 - Math.max(0, Math.min(1, v)))}
+          strokeDashoffset={offset(v)}
           className="transition-[stroke-dashoffset] duration-700 ease-out"
         />
       </svg>

@@ -176,6 +176,17 @@ export function findGaps(inp: PrepInputs, minReach = 0.001): Gap[] {
 }
 
 /**
+ * The same inputs with every prepared own move known for sure, so only the
+ * opponent's replies are uncertain: how complete the repertoire is, whatever
+ * you remember of it ("built" rather than "remembered").
+ */
+export function asBuilt(inp: PrepInputs): PrepInputs {
+  const recall = new Map<string, number>()
+  for (const key of inp.graph.movesFrom.keys()) if (myMove(inp.graph, key)) recall.set(key, 1)
+  return { ...inp, recall }
+}
+
+/**
  * Preparedness from a position inside the repertoire (e.g. where a chapter
  * starts), with the target depth reduced by the own moves already played to
  * get there. `ownBefore` counts those moves.

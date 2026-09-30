@@ -6,7 +6,7 @@ import { isMyTurn, myMove, pathTo } from '../chess/graph'
 import { repStart } from '../chess/start'
 import { totalGames, useExplorerData, type ExplorerFilter } from '../explorer'
 import { retrievability } from '../srs/scheduler'
-import { findGaps, positionsNeedingData, preparedness, type Gap, type PrepInputs, type PrepResult } from './preparedness'
+import { asBuilt, findGaps, ownMovesIn, positionsNeedingData, preparedness, type Gap, type PrepInputs, type PrepResult } from './preparedness'
 
 export interface Branch {
   /** The opponent's reply this branch starts with. */
@@ -15,7 +15,10 @@ export interface Branch {
   toKey: string
   /** Share of games with this reply (null until explorer data is available). */
   share: number | null
+  /** Remembered preparedness from this reply on. */
   score: number
+  /** The same with every prepared move known (how complete the branch is). */
+  built: number
 }
 
 /** A gap, with the repertoire it is in (another one, when a line goes on there). */
@@ -26,10 +29,22 @@ export interface PrepGap extends Gap {
 }
 
 export interface PrepState {
+  /**
+   * Remembered: your moves count at the probability you recall them. Its
+   * expected depth counts from move 1, the set-up moves included.
+   */
   result: PrepResult
+  /** Built: every prepared move of yours counts as known; only the opponent's replies are uncertain. */
+  built: PrepResult
   gaps: PrepGap[]
-  /** What the scores were computed from: the graph followed into other repertoires, with their recall. */
+  /**
+   * What the scores were computed from: the graph followed into other
+   * repertoires, with their recall. Its depth counts from the repertoire's
+   * start (the target minus `startOwn`).
+   */
   inputs: PrepInputs
+  /** Your moves before the repertoire's starting position (set up, counted as known). */
+  startOwn: number
   branches: Branch[]
   /** Explorer positions still to download. */
   pending: number
@@ -37,7 +52,9 @@ export interface PrepState {
 }
 
 /**
- * Preparedness and gaps for a repertoire. Where a line stops but another
+ * Preparedness and gaps for a repertoire, to your `target`-th move of the
+ * game: your moves before the repertoire's starting position are set up, not
+ * drilled, and count as known. Where a line stops but another
  * repertoire of the same colour goes on (a transposition), preparedness
  * follows into it, with that repertoire's moves and recall. Explorer data
  * needed for the calculation is downloaded in the background (throttled) and
@@ -46,8 +63,10 @@ export interface PrepState {
 export function usePreparedness(
   data: RepertoireData | null | undefined,
   filter: ExplorerFilter | undefined,
-  depth: number,
+  target: number,
 ): PrepState | undefined {
+  const startOwn = data ? ownMovesIn(repStart(data.rep).moves, 0, data.rep.color) : 0
+  const depth = Math.max(0, target - startOwn)
   const cross = useCrossIndex(data?.rep)
   const followed = useMemo(() => (data && cross ? followInto(data.graph, data.rep.id, cross) : undefined), [data, cross])
   const graph = followed?.graph
@@ -61,7 +80,10 @@ export function usePreparedness(
     const recall = new Map<string, number>()
     for (const [k, c] of [...data.cardMap, ...followed.cards]) recall.set(k, retrievability(c, now))
     const inp: PrepInputs = { graph, explorer: cached, recall, depth }
-    const result = preparedness(inp)
+    const fromMove1 = (r: PrepResult): PrepResult => ({ ...r, expectedDepth: r.expectedDepth + startOwn })
+    const result = fromMove1(preparedness(inp))
+    const builtInp = asBuilt(inp)
+    const built = fromMove1(preparedness(builtInp))
     const others = crossReps(cross)
     const start = repStart(data.rep).moves
     const gaps = findGaps(inp).map((g): PrepGap => {
@@ -82,10 +104,11 @@ export function usePreparedness(
       const share = ex ? (games ? totalGames(games) / Math.max(1, totalGames(ex)) : 0) : null
       const ownBefore = isMyTurn(graph, root) ? 1 : 0
       const sub = preparedness({ ...inp, depth: depth - ownBefore }, m.toKey)
-      branches.push({ san: m.san, uci: m.uci, toKey: m.toKey, share, score: sub.score })
+      const subBuilt = preparedness({ ...builtInp, depth: depth - ownBefore }, m.toKey)
+      branches.push({ san: m.san, uci: m.uci, toKey: m.toKey, share, score: sub.score, built: subBuilt.score })
     }
     branches.sort((a, b) => (b.share ?? 0) - (a.share ?? 0))
 
-    return { result, gaps, inputs: inp, branches, pending, fetchError }
-  }, [data, cached, depth, pending, fetchError, followed, graph, cross])
+    return { result, built, gaps, inputs: inp, startOwn, branches, pending, fetchError }
+  }, [data, cached, depth, startOwn, pending, fetchError, followed, graph, cross])
 }

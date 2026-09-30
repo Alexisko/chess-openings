@@ -247,17 +247,55 @@ export function buildPlan({ color, reps, choices, explorer }: PlanInput): Plan {
   }
 }
 
+/** A second answer kept for specific opponents: where it branches off and the repertoires it leads to. */
+export interface SideBranch {
+  /** Position where you have this answer next to your main one. */
+  from: MoveNode
+  move: PlannedMove
+  /** Repertoires reached through it (each with the moves leading there). */
+  covered: CoveredNode[]
+}
+
+/**
+ * The side lines of a plan: second answers found on the main lines, with the
+ * repertoires they lead to. Side lines inside side lines are part of the first.
+ */
+export function sideBranches(root: PlanNode): SideBranch[] {
+  const out: SideBranch[] = []
+  const coveredIn = (n: PlanNode, acc: CoveredNode[]): CoveredNode[] => {
+    if (n.kind === 'covered') acc.push(n)
+    else if (n.kind === 'move') for (const m of n.moves) coveredIn(m.child, acc)
+    else if (n.kind === 'replies') for (const r of n.replies) coveredIn(r.child, acc)
+    return acc
+  }
+  const walk = (n: PlanNode) => {
+    if (n.kind === 'move')
+      n.moves.forEach((m, i) => (i === 0 ? walk(m.child) : out.push({ from: n, move: m, covered: coveredIn(m.child, []) })))
+    else if (n.kind === 'replies') for (const r of n.replies) walk(r.child)
+  }
+  walk(root)
+  return out
+}
+
+/** A repertoire's preparedness: built (your moves certain) and remembered (weighted by recall). */
+export interface RepScore {
+  built: number
+  remembered: number
+}
+
 /**
  * Overall preparedness of a colour: each covered line weighted by how often it
- * is reached, times its repertoire's preparedness. Null until every score is known.
+ * is reached, times its preparedness (see useLineScore), keyed by the covered
+ * position. Lines no repertoire covers count as 0. Null until every score is known.
  */
-export function planScore(plan: Plan, scores: Map<string, number>): number | null {
+export function planScore(plan: Plan, scores: Map<string, RepScore>): RepScore | null {
   if (plan.coverage === null) return null
-  let s = 0
+  const s: RepScore = { built: 0, remembered: 0 }
   for (const c of plan.covered) {
-    const score = scores.get(c.rep.id)
+    const score = scores.get(c.key)
     if (score === undefined) return null
-    s += (c.reach ?? 0) * score
+    s.built += (c.reach ?? 0) * score.built
+    s.remembered += (c.reach ?? 0) * score.remembered
   }
   return s
 }

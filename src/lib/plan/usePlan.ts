@@ -2,11 +2,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useMemo, useState } from 'react'
 import { db } from '../../db/schema'
 import type { Settings } from '../../db/settings'
+import { useRepertoire } from '../../db/useRepertoire'
 import { buildGraph } from '../chess/graph'
 import type { Color } from '../chess/position'
 import { repStart } from '../chess/start'
 import { useExplorerData, type ExplorerData } from '../explorer'
-import { buildPlan, type Plan, type PlanRep } from './plan'
+import { asBuilt, ownMovesIn, preparedness } from '../prep/preparedness'
+import { usePreparedness } from '../prep/usePreparedness'
+import { buildPlan, type CoveredNode, type Plan, type PlanRep, type RepScore } from './plan'
 
 export interface PlanState {
   plan: Plan
@@ -59,12 +62,34 @@ export function usePlan(color: Color, settings: Settings | undefined): PlanState
   )
 }
 
-/** Preparedness per repertoire id, reported by the rows that compute it. */
-export function useScoreMap(): [Map<string, number>, (repId: string, score: number) => void] {
-  const [scores, setScores] = useState(() => new Map<string, number>())
-  const report = useCallback(
-    (repId: string, score: number) => setScores((m) => (m.get(repId) === score ? m : new Map(m).set(repId, score))),
-    [],
-  )
+/**
+ * A covered line's preparedness to your N-th move of the game (N = the
+ * preparedness target), from where the line enters its repertoire. Your moves
+ * before that count as known: they are set up by the plan, not drilled.
+ */
+export function useLineScore(node: CoveredNode, color: Color, settings: Settings) {
+  const data = useRepertoire(node.rep.id)
+  const prep = usePreparedness(data, settings.explorerFilter, settings.prepDepth)
+  const score = useMemo((): RepScore | undefined => {
+    if (data && !data.moves.length) return { built: 0, remembered: 0 }
+    if (!data || !prep) return undefined
+    const depth = settings.prepDepth - ownMovesIn(node.path, 0, color)
+    return {
+      built: preparedness({ ...asBuilt(prep.inputs), depth }, node.key).score,
+      remembered: preparedness({ ...prep.inputs, depth }, node.key).score,
+    }
+  }, [data, prep, node.path, node.key, color, settings.prepDepth])
+  return { data, score }
+}
+
+/** Preparedness per covered position key (built and remembered), reported by the lines that compute it. */
+export function useScoreMap(): [Map<string, RepScore>, (repId: string, score: RepScore) => void] {
+  const [scores, setScores] = useState(() => new Map<string, RepScore>())
+  const report = useCallback((repId: string, score: RepScore) => {
+    setScores((m) => {
+      const cur = m.get(repId)
+      return cur && cur.built === score.built && cur.remembered === score.remembered ? m : new Map(m).set(repId, score)
+    })
+  }, [])
   return [scores, report]
 }
