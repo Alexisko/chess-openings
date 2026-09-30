@@ -43,6 +43,8 @@ export interface PrepState {
    * start (the target minus `startOwn`).
    */
   inputs: PrepInputs
+  /** `inputs` with every prepared move of yours known, for built scores. */
+  builtInputs: PrepInputs
   /** Your moves before the repertoire's starting position (set up, counted as known). */
   startOwn: number
   branches: Branch[]
@@ -109,6 +111,6 @@ export function usePreparedness(
     }
     branches.sort((a, b) => (b.share ?? 0) - (a.share ?? 0))
 
-    return { result, built, gaps, inputs: inp, startOwn, branches, pending, fetchError }
+    return { result, built, gaps, inputs: inp, builtInputs: builtInp, startOwn, branches, pending, fetchError }
   }, [data, cached, depth, startOwn, pending, fetchError, followed, graph, cross])
 }
