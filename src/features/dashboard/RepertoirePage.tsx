@@ -18,7 +18,7 @@ import { graphToPgn, pgnToLines } from '../../lib/chess/pgn'
 import { formatMoves, replay } from '../../lib/chess/position'
 import { repStart } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
-import type { Gap } from '../../lib/prep/preparedness'
+import type { Gap, PrepResult } from '../../lib/prep/preparedness'
 import { usePreparedness, type PrepGap, type PrepState } from '../../lib/prep/usePreparedness'
 import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapters'
@@ -55,6 +55,7 @@ export function RepertoirePage() {
   if (data === undefined || !settings) return null
   if (data === null) return <p className="text-muted">Repertoire not found.</p>
   const { rep } = data
+  const startSans = repStart(rep).sans
   const now = new Date()
   const due = data.cards.filter((c) => isDue(c.fsrs, now)).length
   const fresh = data.cards.filter((c) => isNew(c.fsrs)).length
@@ -117,22 +118,27 @@ export function RepertoirePage() {
       <ChapterSection data={data} prep={prep} />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 md:items-start">
-        <Section title={`Preparedness, ${settings.prepDepth} moves deep`}>
+        <Section title={`Preparedness to move ${settings.prepDepth}`}>
           {!prep ? (
             <p className="text-sm text-muted">Calculating…</p>
           ) : (
             <>
-              <div className="flex items-center gap-5">
-                <ScoreRing value={prep.result.score} size={96} stroke={7} />
-                <div className="flex flex-col gap-3">
-                  <p className="text-xs leading-relaxed text-muted">
-                    Chance to play {settings.prepDepth} moves from the start without leaving the prep you remember.
-                  </p>
-                  <div>
-                    <span className="font-display text-2xl font-medium tabular-nums">{prep.result.expectedDepth.toFixed(1)}</span>{' '}
-                    <span className="text-xs text-muted">of your moves in prep, on average</span>
-                  </div>
-                </div>
+              <p className="text-xs leading-relaxed text-muted">
+                Chance to reach your move {settings.prepDepth} of the game without leaving your preparation, when opponents
+                play at the explorer's frequencies.
+                {startSans.length > 0 && <> The set-up moves {formatMoves(startSans)} count as known.</>}
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <PrepScore
+                  value={prep.built}
+                  label="Built"
+                  help="Every move you prepared counts as known: only the opponent's replies can take you out."
+                />
+                <PrepScore
+                  value={prep.result}
+                  label="Remembered"
+                  help="Each of your moves counts at the chance you recall it today. Moves not learned yet count as 0."
+                />
               </div>
               {prep.pending > 0 && (
                 <div className="mt-3">
@@ -149,7 +155,8 @@ export function RepertoirePage() {
                     <tr>
                       <th className="font-normal">Opponent plays</th>
                       <th className="text-right font-normal">Games</th>
-                      <th className="text-right font-normal">Prepared</th>
+                      <th className="text-right font-normal">Built</th>
+                      <th className="text-right font-normal">Remembered</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -157,6 +164,7 @@ export function RepertoirePage() {
                       <tr key={b.uci} className="border-t border-line/70">
                         <td className="py-1.5 font-semibold">{b.san}</td>
                         <td className="text-right text-muted">{b.share === null ? '–' : pct(b.share)}</td>
+                        <td className={`text-right font-medium ${scoreColor(b.built)}`}>{pct(b.built)}</td>
                         <td className={`text-right font-medium ${scoreColor(b.score)}`}>{pct(b.score)}</td>
                       </tr>
                     ))}
@@ -164,7 +172,11 @@ export function RepertoirePage() {
                 </table>
               )}
               <p className="mt-3 text-xs text-faint">
-                Raise the target depth in Settings as your score improves.
+                {prep.built.score - prep.result.score >= 0.15
+                  ? 'Remembered is well behind built: train to close the gap.'
+                  : prep.built.score < 0.8
+                    ? 'To raise built, answer the frequent replies and extend the short lines (see the gaps).'
+                    : 'Raise the target depth in Settings as your score improves.'}
               </p>
             </>
           )}
@@ -198,6 +210,22 @@ export function RepertoirePage() {
         >
           Delete repertoire
         </button>
+      </div>
+    </div>
+  )
+}
+
+/** A preparedness score with its ring and the average number of your moves played in prep. */
+function PrepScore({ value, label, help }: { value: PrepResult; label: string; help: string }) {
+  return (
+    <div className="flex items-center gap-3" title={help}>
+      <ScoreRing value={value.score} size={72} stroke={6} />
+      <div>
+        <div className="text-[11px] tracking-wide text-faint uppercase">{label}</div>
+        <div>
+          <span className="font-display text-xl font-medium tabular-nums">{value.expectedDepth.toFixed(1)}</span>{' '}
+          <span className="text-xs text-muted">of your moves in prep, on average</span>
+        </div>
       </div>
     </div>
   )

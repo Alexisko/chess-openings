@@ -263,7 +263,7 @@ function TrainingSettings({ settings }: { settings: Settings }) {
       <div className="flex flex-col divide-y divide-line/60 [&>*]:py-3 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
         <NumberSetting
           label="Preparedness target (your moves)"
-          hint="Counted from each repertoire's starting position. Raise it as your score improves."
+          hint="Scores measure your chance to reach your N-th move of the game in prep. Raise it as your score improves."
           value={settings.prepDepth}
           min={1}
           max={25}

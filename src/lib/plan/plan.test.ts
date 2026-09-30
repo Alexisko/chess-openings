@@ -4,7 +4,7 @@ import { buildGraph } from '../chess/graph'
 import { playUci, positionKey, type Color } from '../chess/position'
 import { startOf } from '../chess/start'
 import type { ExplorerData } from '../explorer/explorer'
-import { buildPlan, planScore, type DecisionNode, type MoveNode, type PlanNode, type PlanRep, type RepliesNode } from './plan'
+import { buildPlan, planScore, sideBranches, type DecisionNode, type MoveNode, type PlanNode, type PlanRep, type RepliesNode } from './plan'
 
 let t = 0
 /** A repertoire starting after `start` with the given lines (UCI, continuing from the start). */
@@ -117,7 +117,9 @@ describe('repertoire plan', () => {
     expect(afterE5.moves[0].child).toMatchObject({ kind: 'covered', rep: { name: 'Vienna' } })
     expect(plan.coverage).toBeCloseTo(0.6)
     expect(plan.decisions.map((d) => d.title)).toEqual(['Against the Sicilian'])
-    expect(planScore(plan, new Map([['Vienna', 0.5]]))).toBeCloseTo(0.3)
+    const score = planScore(plan, new Map([[keyAfter(['e2e4', 'e7e5', 'b1c3']), { built: 0.5, remembered: 0.25 }]]))
+    expect(score?.built).toBeCloseTo(0.3)
+    expect(score?.remembered).toBeCloseTo(0.15)
     expect(planScore(plan, new Map())).toBeNull()
   })
 
@@ -200,5 +202,9 @@ describe('repertoire plan', () => {
     expect(after.covered.map((c) => c.rep.name)).toEqual(['Caro-Kann'])
     expect(after.sideLines.map((r) => r.name)).toEqual(['vs Scotch'])
     expect(after.offPlan).toEqual([])
+    // Listed apart from the main tree, with the moves to the repertoire.
+    expect(sideBranches(after.root).map((b) => [b.move.san, b.covered.map((c) => [c.rep.name, c.sans.join(' ')])])).toEqual([
+      ['e5', [['vs Scotch', 'e4 e5 Nf3 Nc6 d4']]],
+    ])
   })
 })

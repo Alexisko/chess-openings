@@ -119,7 +119,7 @@ export function OverviewPage() {
       const input = await promptDialog({
         title: 'Change the starting position',
         message: error ?? [
-          'These moves are set up, not drilled, and scores are measured from the position after them.',
+          'These moves are set up, not drilled: scores count them as known.',
           'Leave empty to start from the initial position.',
         ],
         defaultValue: text,
@@ -195,7 +195,7 @@ export function OverviewPage() {
   const rowPrep = (row: Row): number | undefined => {
     // An own move is scored from the position before it (it is the only move there).
     const ownBefore = ownMovesUpTo(row.first) - (row.first.byMe ? 1 : 0)
-    const remaining = depth - ownBefore
+    const remaining = prep ? prep.inputs.depth - ownBefore : 0
     if (remaining <= 0 || !prep) return undefined
     const from = row.first.byMe ? parentKey(row.first) : row.first.key
     // Same inputs as the overall score, so lines that go on in another repertoire follow into it.
@@ -301,7 +301,8 @@ export function OverviewPage() {
     const open = hasKids && (toggled.has(rowId) ? !defaultOpen : defaultOpen)
     const r = reach(row.first)
     const p = rowPrep(row)
-    const own = ownMovesUpTo(row.last)
+    // Your moves in the game so far, the set-up moves before the start included.
+    const own = ownMovesUpTo(row.last) + (prep?.startOwn ?? 0)
     // The line ends where another repertoire goes on, or joins one on the way.
     const continues = row.last.children.length ? [] : crossAt(cross, row.last.key, rep.id)
     const joins = new Map<string, { ref: CrossRef; key: string }>()
@@ -352,7 +353,7 @@ export function OverviewPage() {
                   {endsEarly && (
                     <span
                       className="shrink-0 rounded bg-warn/15 px-1 text-warn"
-                      title={`Your target is ${depth} moves deep from the start`}
+                      title={`Your target is move ${depth} of the game`}
                     >
                       ends {own}/{depth} deep
                     </span>
@@ -395,8 +396,9 @@ export function OverviewPage() {
           <span className="text-muted italic">overview</span>
         </h1>
         {prep && (
-          <span className={`text-sm font-medium ${scoreColor(prep.result.score)}`}>
-            {pct(prep.result.score)} prepared, {depth} moves deep
+          <span className="text-sm text-muted" title={`Chance to stay in prep to your move ${depth} of the game`}>
+            To move {depth}: <span className={`font-medium ${scoreColor(prep.built.score)}`}>{pct(prep.built.score)} built</span> ·{' '}
+            <span className={`font-medium ${scoreColor(prep.result.score)}`}>{pct(prep.result.score)} remembered</span>
           </span>
         )}
         {start && start.moves.length > 0 && (
@@ -436,7 +438,7 @@ export function OverviewPage() {
           <span className="text-right" title="Share of games from the starting position that reach this line">
             Games
           </span>
-          <span className="text-right" title={`Chance to stay in remembered prep until ${depth} moves deep`}>
+          <span className="text-right" title={`Chance to stay in remembered prep to your move ${depth}`}>
             Prep
           </span>
           <span />
@@ -457,7 +459,7 @@ export function OverviewPage() {
       </section>
       <p className="text-xs leading-relaxed text-faint">
         Games = share of games from the repertoire's starting position (with your explorer filter) that reach the line.
-        Prep = chance to stay in moves you remember until you are {depth} moves deep.{' '}
+        Prep = chance to stay in moves you remember to your move {depth} of the game.{' '}
         <TargetIcon size={12} className="inline align-[-2px]" /> opens the line in the builder. Chapters start where the
         opponent's reply leads to another variation.
       </p>

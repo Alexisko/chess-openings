@@ -12,7 +12,7 @@ are against the moves real opponents play.
     move is played and how it scores, and how often you played it in your own games.
   - Replies and their frequencies come from the explorer. Starting a repertoire deeper (the Italian starts
     after 3.Bc4) brings up the replies it doesn't cover (2...Nf6 Petrov, 2...d6 Philidor).
-  - Home shows each colour's coverage, overall preparedness and next choice to make.
+  - Home shows each colour's preparedness (built and remembered) and next choice to make.
 - **Builder:** play moves on the board next to the Lichess opening explorer (filtered by time control,
   rating or the masters database) and Stockfish.
   - A Lichess / Masters switch on the explorer panel shows the other database for a quick look. It only changes
@@ -48,10 +48,16 @@ are against the moves real opponents play.
   - *Explain moves* (a switch next to the score, remembered per device) pauses after each correct move to show
     what it threatens and does, until you continue. It's never shown once you're answering again, where it
     could give the next move away.
-- **Preparedness @ move N:** the chance of reaching your N-th move while still in preparation you
-  remember, when opponents choose moves at the explorer's frequencies. The gap list ranks the biggest
-  leaks: replies you haven't prepared, lines that end too early, and moves you haven't learned or recall
-  poorly.
+- **Preparedness @ move N:** the chance of reaching your N-th move while still in your preparation, when
+  opponents choose moves at the explorer's frequencies. It comes in two versions:
+  - *Built:* every move you prepared counts as known, so only the opponent's replies can take you out. It
+    measures how complete the repertoire is.
+  - *Remembered:* each of your moves counts at the chance you recall it today (FSRS), and moves not learned
+    yet count as 0.
+  - N is your N-th move of the game everywhere. Your moves before a repertoire's starting position are set
+    up, not drilled, and count as known.
+  - The gap list ranks the biggest leaks: replies you haven't prepared, lines that end too early, and moves
+    you haven't learned or recall poorly.
 - **Your games:** imports your Lichess and Chess.com games at every speed from bullet to daily (the last 12
   months at first, then only new ones) and finds where each game left your preparation. Bullet counts
   here, though not in the explorer statistics: you should know your moves at any speed.

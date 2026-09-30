@@ -7,14 +7,12 @@ import { ColorDot, Notice, Section, Stat } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
 import { db, type Game, type Repertoire } from '../../db/schema'
 import { setPlanChoice, useSettings, type Settings } from '../../db/settings'
-import { useRepertoire } from '../../db/useRepertoire'
 import { formatMoves, type Color } from '../../lib/chess/position'
 import { startOf, startsWith } from '../../lib/chess/start'
 import { AuthRequiredError, moveShare, totalGames, type ExplorerData } from '../../lib/explorer'
 import type { ResolvedOption, Style, Theory } from '../../lib/openings/catalog'
-import { planScore, scoreFor, type DecisionNode, type PlanNode, type RepliesNode } from '../../lib/plan/plan'
-import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
-import { usePreparedness } from '../../lib/prep/usePreparedness'
+import { planScore, scoreFor, sideBranches, type DecisionNode, type PlanNode, type RepliesNode, type RepScore } from '../../lib/plan/plan'
+import { useLineScore, usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { builderUrl, planUrl } from '../../lib/routes'
 import { confirmOverlap } from '../../lib/dialog'
 import { isDue } from '../../lib/srs/scheduler'
@@ -46,7 +44,7 @@ interface Ctx {
   games: Game[]
   open: Set<string>
   toggle: (id: string) => void
-  report: (repId: string, score: number) => void
+  report: (key: string, score: RepScore) => void
   create: (name: string, startUci: string[], lineUci: string[]) => Promise<void>
 }
 
@@ -112,6 +110,7 @@ export function PlanPage() {
     },
   }
   const next = plan.decisions[0]
+  const sides = sideBranches(plan.root)
 
   return (
     <div className="stagger flex flex-col gap-5">
@@ -140,11 +139,15 @@ export function PlanPage() {
       {!plan.empty && (
         <Section title="Where you stand">
           <div className="grid grid-cols-3 gap-3">
-            <Stat value={plan.coverage === null ? '–' : pct(plan.coverage)} label="of games reach one of your repertoires" />
             <Stat
-              value={score === null ? '–' : pct(score)}
-              cls={score === null ? '' : scoreColor(score)}
-              label={`prepared overall, ${settings.prepDepth} moves deep`}
+              value={score === null ? '–' : pct(score.built)}
+              cls={score === null ? '' : scoreColor(score.built)}
+              label={`of games stay in your repertoires to move ${settings.prepDepth}`}
+            />
+            <Stat
+              value={score === null ? '–' : pct(score.remembered)}
+              cls={score === null ? '' : scoreColor(score.remembered)}
+              label={`stay in moves you remember to move ${settings.prepDepth}`}
             />
             <Stat value={String(plan.decisions.length)} label={plan.decisions.length === 1 ? 'choice left' : 'choices left'} />
           </div>
@@ -188,6 +191,50 @@ export function PlanPage() {
         <NodeView node={plan.root} level={0} ctx={ctx} />
       </section>
 
+      {sides.length > 0 && (
+        <Section title="Side lines">
+          <p className="mb-2 text-xs text-muted">
+            Second answers you keep for specific opponents. They aren't part of the plan above and don't count towards
+            its scores.
+          </p>
+          <ul className="flex flex-col divide-y divide-line/60">
+            {sides.map((b) => {
+              const ply = b.from.path.length
+              return (
+                <li key={`${b.from.key}|${b.move.uci}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                  <span className="font-display text-[15px] font-medium text-maple">
+                    {formatMoves([...b.from.sans, b.move.san])}
+                  </span>
+                  {b.covered.length
+                    ? b.covered.map((c) => (
+                        <span key={c.key} className="flex items-baseline gap-1.5">
+                          {c.sans.length > ply + 1 && (
+                            <span className="font-display text-muted">{formatMoves(c.sans.slice(ply + 1), ply + 1)}</span>
+                          )}
+                          <Link to={`/rep/${c.rep.id}`} className="font-display text-[15px] font-medium text-accent hover:underline">
+                            ✓ {c.rep.name}
+                          </Link>
+                        </span>
+                      ))
+                    : b.move.reps.map((r) => (
+                        <Link key={r.id} to={`/rep/${r.id}`} className="font-display text-[15px] font-medium text-accent hover:underline">
+                          ✓ {r.name}
+                        </Link>
+                      ))}
+                  <button
+                    className="ml-auto rounded-full border border-line-strong px-2 text-xs text-muted transition hover:border-maple/60 hover:text-maple"
+                    title="Play this move by default and keep the current answer as a side line"
+                    onClick={() => setPlanChoice(color, b.from.key, b.move.uci)}
+                  >
+                    make main
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </Section>
+      )}
+
       {plan.offPlan.length > 0 && (
         <Section title="Other repertoires">
           <p className="mb-2 text-xs text-muted">
@@ -230,15 +277,14 @@ function NodeView({ node, level, ctx }: { node: PlanNode; level: number; ctx: Ct
 /** Follows your moves from a node until the next branch point. */
 function chainOf(node: PlanNode) {
   const moves: { san: string; ply: number; source: 'choice' | 'repertoire'; reps: Repertoire[]; fromKey: string }[] = []
-  const extra: { node: PlanNode; uci: string; san: string; ply: number; reps: Repertoire[]; fromKey: string }[] = []
   let cur = node
+  // Only your main answer: second answers are listed apart, as side lines.
   while (cur.kind === 'move') {
-    const [first, ...rest] = cur.moves
+    const [first] = cur.moves
     moves.push({ san: first.san, ply: cur.path.length, source: first.source, reps: first.reps, fromKey: cur.key })
-    for (const m of rest) extra.push({ node: m.child, uci: m.uci, san: m.san, ply: cur.path.length, reps: m.reps, fromKey: cur.key })
     cur = first.child
   }
-  return { moves, extra, end: cur }
+  return { moves, end: cur }
 }
 
 /** One line of the outline: an opponent reply (if any), then your moves up to the next branch. */
@@ -247,22 +293,19 @@ function ChainRow({
   level,
   ctx,
   reply,
-  promote,
 }: {
   node: PlanNode
   level: number
   ctx: Ctx
   reply?: { san: string; ply: number; name?: string; share: number | null }
-  /** For a second answer: makes it your main answer instead. */
-  promote?: () => void
 }) {
-  const { moves, extra, end } = chainOf(node)
+  const { moves, end } = chainOf(node)
   const id = end.path.join(',')
   const decisionOpen = end.kind === 'decision' && ctx.open.has(id)
   return (
     <li id={`plan-${id}`}>
       <div
-        className={`flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm transition-colors hover:bg-surface-2/50 ${node.counted ? '' : 'opacity-60 hover:opacity-100'}`}
+        className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md py-1.5 pr-1 text-sm transition-colors hover:bg-surface-2/50"
         style={indent(level)}
       >
         {reply && (
@@ -305,33 +348,9 @@ function ChainRow({
           </button>
         )}
         {end.kind === 'stop' && <span className="text-xs text-muted">deep enough for now</span>}
-        {promote && (
-          <>
-            <span className="text-xs text-muted" title="Kept for specific opponents: it doesn't count towards coverage or the overall score">
-              (side line, not counted)
-            </span>
-            <button
-              className="rounded-full border border-line-strong px-2 text-xs text-muted transition hover:border-maple/60 hover:text-maple"
-              title="Play this move by default and keep the current answer as a side line"
-              onClick={promote}
-            >
-              make main
-            </button>
-          </>
-        )}
       </div>
-      {(extra.length > 0 || end.kind === 'replies' || decisionOpen) && (
+      {(end.kind === 'replies' || decisionOpen) && (
         <ul>
-          {extra.map((x, i) => (
-            <ChainRow
-              key={`x${i}`}
-              node={x.node}
-              level={level + 1}
-              ctx={ctx}
-              reply={{ san: x.san, ply: x.ply, name: `also in ${x.reps.map((r) => r.name).join(', ')}`, share: null }}
-              promote={() => setPlanChoice(ctx.color, x.fromKey, x.uci)}
-            />
-          ))}
           {end.kind === 'replies' && <RepliesItems node={end} level={level + 1} ctx={ctx} />}
           {decisionOpen && end.kind === 'decision' && (
             <li style={indent(level + 1)} className="py-1">
@@ -514,15 +533,13 @@ function OptionCard({ option: o, node, ctx }: { option: ResolvedOption; node: De
   )
 }
 
-/** A repertoire answering a line, with its preparedness (reported for the overall score). */
+/** A repertoire answering a line, with the line's preparedness (reported for the overall score). */
 function CoveredBadge({ node, ctx }: { node: Extract<PlanNode, { kind: 'covered' }>; ctx: Ctx }) {
-  const data = useRepertoire(node.rep.id)
-  const prep = usePreparedness(data, ctx.settings.explorerFilter, ctx.settings.prepDepth)
-  const score = data && data.moves.length ? prep?.result.score : data ? 0 : undefined
+  const { data, score } = useLineScore(node, ctx.color, ctx.settings)
   const { report } = ctx
   useEffect(() => {
-    if (score !== undefined) report(node.rep.id, score)
-  }, [score, node.rep.id, report])
+    if (score) report(node.key, score)
+  }, [score, node.key, report])
   const now = new Date()
   const due = data ? data.cards.filter((c) => isDue(c.fsrs, now)).length : 0
   return (
@@ -535,9 +552,10 @@ function CoveredBadge({ node, ctx }: { node: Extract<PlanNode, { kind: 'covered'
           empty: build it
         </Link>
       ) : (
-        score !== undefined && (
-          <span className={`text-xs ${scoreColor(score)}`} title={`Prepared ${ctx.settings.prepDepth} moves deep`}>
-            {pct(score)} prepared
+        score && (
+          <span className="text-xs text-muted" title={`Chance to stay in this repertoire to move ${ctx.settings.prepDepth}, once this line is reached`}>
+            to move {ctx.settings.prepDepth}: <span className={scoreColor(score.built)}>{pct(score.built)} built</span> ·{' '}
+            <span className={scoreColor(score.remembered)}>{pct(score.remembered)} remembered</span>
           </span>
         )
       )}

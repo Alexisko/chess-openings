@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { pct, scoreColor } from '../../components/format'
+import { pct } from '../../components/format'
 import { ArrowRight, BoltIcon, ChevronDown, BookIcon, TargetIcon, TrainIcon } from '../../components/icons'
 import { ColorDot, ScoreRing, Section } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
@@ -12,8 +12,8 @@ import { useRepertoire, useRepertoires } from '../../db/useRepertoire'
 import { startLogin } from '../../lib/auth/lichess'
 import { formatMoves, type Color } from '../../lib/chess/position'
 import { parseMoves, repStart } from '../../lib/chess/start'
-import { planScore } from '../../lib/plan/plan'
-import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
+import { planScore, type CoveredNode, type RepScore } from '../../lib/plan/plan'
+import { useLineScore, usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl, planUrl } from '../../lib/routes'
 import { confirmOverlap } from '../../lib/dialog'
@@ -142,20 +142,10 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
       ) : (
         plan && (
           <>
-            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
-              {plan.coverage !== null && (
-                <span>
-                  <span className="font-display text-lg font-medium tabular-nums">{pct(plan.coverage)}</span>{' '}
-                  <span className="text-muted">of games covered</span>
-                </span>
-              )}
-              {score !== null && (
-                <span>
-                  <span className={`font-display text-lg font-medium tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>{' '}
-                  <span className="text-muted">prepared, {settings.prepDepth} moves deep</span>
-                </span>
-              )}
-            </div>
+            {plan.covered.map((c) => (
+              <LineReporter key={c.key} node={c} color={color} settings={settings} onScore={report} />
+            ))}
+            {score !== null && <PrepBar score={score} depth={settings.prepDepth} />}
             {next && (
               <Link
                 to={planUrl(color, next.path)}
@@ -176,7 +166,7 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
       {reps.length > 0 && (
         <ul className="mt-4 flex flex-col gap-2">
           {reps.map((r) => (
-            <RepertoireRow key={r.id} rep={r} settings={settings} onScore={report} side={!!plan?.sideLines.some((s) => s.id === r.id)} />
+            <RepertoireRow key={r.id} rep={r} settings={settings} side={!!plan?.sideLines.some((s) => s.id === r.id)} />
           ))}
         </ul>
       )}
@@ -184,24 +174,71 @@ function ColorSection({ color, reps, settings }: { color: Color; reps: Repertoir
   )
 }
 
+/**
+ * A colour's preparedness as one rounded bar: remembered in front, built
+ * behind it in a lighter shade.
+ */
+function PrepBar({ score, depth }: { score: RepScore; depth: number }) {
+  const width = (x: number) => ({ width: `${Math.max(0, Math.min(1, x)) * 100}%` })
+  return (
+    <div
+      title={`Share of games in which you reach your move ${depth} without leaving your preparation. Opponents' moves are weighted by how often they are played in the Lichess opening explorer (with your filter in Settings), not by your own games.\nBuilt: every move you prepared counts as known.\nRemembered: each of your moves counts at the chance you recall it today.`}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-xs text-muted">
+        <span>
+          Games in your prep to move {depth} <span className="text-faint">· Lichess explorer</span>
+        </span>
+        <span className="flex gap-3">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-maple" />
+            <span className="font-medium text-ink tabular-nums">{pct(score.remembered)}</span> remembered
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-maple/30" />
+            <span className="font-medium text-ink tabular-nums">{pct(score.built)}</span> built
+          </span>
+        </span>
+      </div>
+      <div className="relative mt-2 h-2.5 overflow-hidden rounded-full bg-line/70">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-maple/30 transition-[width] duration-700 ease-out" style={width(score.built)} />
+        <div className="absolute inset-y-0 left-0 rounded-full bg-maple transition-[width] duration-700 ease-out" style={width(score.remembered)} />
+      </div>
+    </div>
+  )
+}
+
+/** Computes a covered line's preparedness for the colour's overall score; renders nothing. */
+function LineReporter({
+  node,
+  color,
+  settings,
+  onScore,
+}: {
+  node: CoveredNode
+  color: Color
+  settings: Settings
+  onScore: (key: string, score: RepScore) => void
+}) {
+  const { score } = useLineScore(node, color, settings)
+  useEffect(() => {
+    if (score) onScore(node.key, score)
+  }, [score, node.key, onScore])
+  return null
+}
+
 function RepertoireRow({
   rep,
   settings,
-  onScore,
   side,
 }: {
   rep: Repertoire
   settings: Settings
-  onScore: (repId: string, score: number) => void
   /** Reached only through a second answer (see the plan). */
   side: boolean
 }) {
   const data = useRepertoire(rep.id)
   const prep = usePreparedness(data, settings.explorerFilter, settings.prepDepth)
-  const score = data && data.moves.length ? prep?.result.score : data ? 0 : undefined
-  useEffect(() => {
-    if (score !== undefined) onScore(rep.id, score)
-  }, [score, rep.id, onScore])
+  const hasMoves = !!data && data.moves.length > 0
   const now = new Date()
   const due = data ? data.cards.filter((c) => isDue(c.fsrs, now)).length : 0
   return (
@@ -209,7 +246,6 @@ function RepertoireRow({
       <Link
         to={`/rep/${rep.id}`}
         className="group flex items-center gap-3 rounded-lg border border-line/60 bg-surface-2/60 px-3 py-2.5 transition hover:border-line-strong hover:bg-surface-2"
-        title={`Prepared ${settings.prepDepth} moves deep`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -236,7 +272,24 @@ function RepertoireRow({
             )}
           </div>
         </div>
-        <ScoreRing value={prep && data && data.moves.length > 0 ? prep.result.score : undefined} size={44} />
+        <ScoreRing
+          value={prep && hasMoves ? prep.result.score : undefined}
+          under={prep && hasMoves ? prep.built.score : undefined}
+          label={
+            prep && hasMoves ? (
+              // Sized to fit "100%" inside the ring.
+              <span className="text-ink" style={{ fontSize: 12.5 }}>
+                {pct(prep.built.score)}
+              </span>
+            ) : undefined
+          }
+          title={
+            prep && hasMoves
+              ? `In prep to your move ${settings.prepDepth}, opponents' moves weighted by the Lichess explorer:\n${pct(prep.built.score)} built (centre, light arc): every move you prepared counts as known.\n${pct(prep.result.score)} remembered (dark arc): each move counts at the chance you recall it today.`
+              : undefined
+          }
+          size={48}
+        />
       </Link>
     </li>
   )
@@ -297,7 +350,7 @@ function NewRepertoire() {
             }}
           />
           <span className="leading-relaxed text-faint">
-            These moves are set up, not drilled, and your score only counts what happens after them.
+            These moves are set up, not drilled: your score counts them as known.
           </span>
         </label>
         {error && <p className="text-sm text-bad">{error}</p>}

@@ -3,7 +3,7 @@ import type { RepMove } from '../../db/schema'
 import { buildGraph, ROOT_KEY } from '../chess/graph'
 import { playUci, positionKey, START_FEN, turnOf, type Color } from '../chess/position'
 import type { ExplorerData } from '../explorer/explorer'
-import { findGaps, positionsNeedingData, preparedness } from './preparedness'
+import { asBuilt, findGaps, positionsNeedingData, preparedness } from './preparedness'
 
 let t = 0
 /** Builds repertoire moves from lines of UCI moves. */
@@ -87,6 +87,14 @@ describe('preparedness', () => {
     const recall = new Map([...graph.order].map((k) => [k, 1]))
     expect(preparedness({ graph, explorer, recall, depth: 3 }).score).toBe(0)
     expect(preparedness({ graph, explorer, recall, depth: 2 }).score).toBeCloseTo(0.8)
+  })
+
+  it('counts every prepared own move as known when built', () => {
+    // Nothing learned: 0 remembered, but 1.e4 and both 2.Nf3 are built, only 1...e6 is missing.
+    const inp = { graph, explorer, recall: new Map<string, number>(), depth: 2 }
+    expect(preparedness(inp).score).toBe(0)
+    expect(preparedness(asBuilt(inp)).score).toBeCloseTo(0.8)
+    expect(preparedness(asBuilt(inp)).expectedDepth).toBeCloseTo(1.8)
   })
 
   it('lists gaps ranked by impact', () => {
