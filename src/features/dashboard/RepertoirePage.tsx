@@ -243,8 +243,9 @@ function ChapterSection({ data, prep }: { data: RepertoireData; prep: PrepState 
   if (!tree || !chapters || !tree.children.length) return null
   const { rep } = data
   const startLen = repStart(rep).moves.length
-  const score = (ch: Chapter) =>
-    prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, startLen, rep.color)).score
+  const own = (ch: Chapter) => ownMovesIn(ch.node.path, startLen, rep.color)
+  const score = (ch: Chapter) => prep && preparednessFrom(prep.inputs, ch.node.key, own(ch)).score
+  const built = (ch: Chapter) => prep && preparednessFrom(prep.builtInputs, ch.node.key, own(ch)).score
   const depth = (ch: Chapter) => {
     let d = 0
     for (let p = ch.parent; p; p = p.parent) d++
@@ -281,7 +282,7 @@ function ChapterSection({ data, prep }: { data: RepertoireData; prep: PrepState 
                   <PencilIcon size={13} />
                 </button>
               </div>
-              <ChapterTraining rep={rep} chapter={ch} cards={data.cardMap} score={score(ch)} compact />
+              <ChapterTraining rep={rep} chapter={ch} cards={data.cardMap} score={score(ch)} built={built(ch)} compact />
             </li>
           )
         })}

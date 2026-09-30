@@ -13,6 +13,7 @@ export function ChapterTraining({
   chapter,
   cards,
   score,
+  built,
   compact = false,
 }: {
   rep: Repertoire
@@ -20,6 +21,8 @@ export function ChapterTraining({
   cards: ReadonlyMap<string, FsrsCard>
   /** Preparedness from the chapter's start, if known. */
   score?: number
+  /** The same with every prepared move known: how complete the chapter is, to the target move. */
+  built?: number
   compact?: boolean
 }) {
   const now = new Date()
@@ -30,6 +33,11 @@ export function ChapterTraining({
   const btn = `btn-ghost ${compact ? 'gap-1.5 px-2 py-1 text-xs' : ''}`
   return (
     <div className={`flex flex-wrap items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
+      {built !== undefined && (
+        <span className="text-xs text-muted" title="Built: how complete this chapter is to your target move, counting every prepared move as known">
+          Built <span className={`font-semibold tabular-nums ${scoreColor(built)}`}>{pct(built)}</span>
+        </span>
+      )}
       {score !== undefined && (
         <span className="mr-1 text-xs text-muted" title="Preparedness from the start of this chapter">
           {compact ? 'Prep' : 'Prepared'} <span className={`font-semibold tabular-nums ${scoreColor(score)}`}>{pct(score)}</span>

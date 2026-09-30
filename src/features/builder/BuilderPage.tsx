@@ -270,8 +270,9 @@ export function BuilderPage() {
   const chapter = chapters && (chapters.of(currentPath) ?? chapters.list[0])
   const showList = !!chapters && chapters.list.length > 1
   const selectChapter = (ch: Chapter) => goTo(ch.node.path)
-  const chapterScore = (ch: Chapter) =>
-    prep && preparednessFrom(prep.inputs, ch.node.key, ownMovesIn(ch.node.path, start.moves.length, color)).score
+  const chapterScore = (ch: Chapter, built = false) =>
+    prep &&
+    preparednessFrom(built ? prep.builtInputs : prep.inputs, ch.node.key, ownMovesIn(ch.node.path, start.moves.length, color)).score
 
 
   return (
@@ -524,7 +525,7 @@ export function BuilderPage() {
           </div>
           {chapter && tree.children.length > 0 && (
             <div className="border-t border-line/70 px-3 py-2">
-              <ChapterTraining rep={rep} chapter={chapter} cards={data.cardMap} score={chapterScore(chapter)} compact />
+              <ChapterTraining rep={rep} chapter={chapter} cards={data.cardMap} score={chapterScore(chapter)} built={chapterScore(chapter, true)} compact />
             </div>
           )}
         </section>
