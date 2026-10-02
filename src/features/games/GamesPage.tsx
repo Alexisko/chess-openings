@@ -16,6 +16,7 @@ import { Findings } from './Findings'
 import { GameExplorer } from './GameExplorer'
 import { OpeningMap } from './OpeningMap'
 import { OpeningOverview } from './OpeningOverview'
+import { RecentGames } from './RecentGames'
 
 const DAY = 24 * 3600 * 1000
 const PERIODS = [
@@ -26,6 +27,7 @@ const PERIODS = [
 ]
 
 const TABS: { id: GamesTab; label: string }[] = [
+  { id: 'recent', label: 'Recent' },
   { id: 'overview', label: 'Openings' },
   { id: 'map', label: 'Map' },
   { id: 'explorer', label: 'Explorer' },
@@ -45,7 +47,7 @@ export function GamesPage() {
   const [params, setParams] = useSearchParams()
   // The map needs a wide screen: on phones its tab is hidden and a link to it opens the Openings list.
   const mapFits = useMediaQuery('(min-width: 768px)')
-  const asked = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'overview'
+  const asked = TABS.find((t) => t.id === params.get('tab'))?.id ?? 'recent'
   const tab: GamesTab = asked === 'map' && !mapFits ? 'overview' : asked
   const color: Color = params.get('color') === 'black' ? 'black' : 'white'
   const at = useMemo(() => params.get('at')?.split(',').filter(Boolean) ?? [], [params])
@@ -121,7 +123,7 @@ export function GamesPage() {
                 </button>
               ))}
             </nav>
-            {tab !== 'findings' && (
+            {tab !== 'findings' && tab !== 'recent' && (
               <div className="ml-auto flex gap-1 pb-1.5" role="group" aria-label="Colour">
                 {(['white', 'black'] as const).map((c) => (
                   <button
@@ -139,6 +141,7 @@ export function GamesPage() {
             )}
           </div>
 
+          {tab === 'recent' && <RecentGames analyses={analyses} reps={reps} />}
           {tab === 'overview' && (
             <OpeningOverview
               analyses={ofColor}

@@ -31,11 +31,16 @@ export function trainUrl(mode: TrainLink, scope: { repId?: string | null; color?
   return `/train?${p}`
 }
 
-export type GamesTab = 'overview' | 'map' | 'explorer' | 'findings'
+export type GamesTab = 'recent' | 'overview' | 'map' | 'explorer' | 'findings'
 
 /** Query of the games page: a tab, the colour, and (for the explorer) a line of moves. */
 export function gamesParams(tab: GamesTab, color: 'white' | 'black', at: string[] = []) {
   const p = new URLSearchParams({ tab, color })
   if (at.length) p.set('at', at.join(','))
   return p
+}
+
+/** The review of one of your games, optionally at a ply (= moves played). */
+export function gameUrl(id: string, ply?: number) {
+  return `/games/${encodeURIComponent(id)}${ply === undefined ? '' : `?ply=${ply}`}`
 }
