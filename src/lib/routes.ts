@@ -1,3 +1,8 @@
+/** The Lichess analysis board on a line from the start position, seen from one side. */
+export function lichessAnalysisUrl(pgn: string, color: 'white' | 'black') {
+  return `https://lichess.org/analysis${pgn ? `/pgn/${encodeURIComponent(pgn)}` : ''}?color=${color}`
+}
+
 export function builderUrl(repId: string, uci: string[]) {
   return `/rep/${repId}/build${uci.length ? `?m=${uci.join(',')}` : ''}`
 }

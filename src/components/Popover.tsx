@@ -31,7 +31,9 @@ export function Popover({
       const r = a.getBoundingClientRect()
       const left = Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8))
       const above = r.top - el.offsetHeight - 6
-      const top = r.bottom + 6 + el.offsetHeight > window.innerHeight - 8 && above > 8 ? above : r.bottom + 6
+      const fitsBelow = r.bottom + 6 + el.offsetHeight <= window.innerHeight - 8
+      // Too tall for either side: as low as it fits on screen.
+      const top = fitsBelow ? r.bottom + 6 : above > 8 ? above : Math.max(8, window.innerHeight - el.offsetHeight - 8)
       setPos((p) => (p?.top === top && p.left === left ? p : { top, left }))
     }
     place()
@@ -66,7 +68,7 @@ export function Popover({
       ref={ref}
       role="dialog"
       aria-label={label}
-      className="fixed z-40 w-max max-w-[calc(100vw-1rem)] animate-pop rounded-xl border border-line-strong bg-surface p-3 shadow-[var(--card-shadow)]"
+      className="fixed z-40 max-h-[calc(100vh-1rem)] w-max max-w-[calc(100vw-1rem)] animate-pop overflow-y-auto rounded-xl border border-line-strong bg-surface p-3 shadow-[var(--card-shadow)]"
       style={pos ?? { top: 0, left: 0, visibility: 'hidden' }}
     >
       {children}

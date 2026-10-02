@@ -6,7 +6,7 @@ import { ChapterLines } from '../../components/ChapterLines'
 import { ChapterTraining } from '../../components/ChapterTraining'
 import { ChapterList, ChapterStepper } from '../../components/ChapterNav'
 import { OpeningTrail } from '../../components/OpeningTrail'
-import { FirstIcon, LastIcon, NextIcon, PencilIcon, PrevIcon } from '../../components/icons'
+import { ExternalIcon, FirstIcon, LastIcon, NextIcon, PencilIcon, PrevIcon } from '../../components/icons'
 import { ColorDot, Notice, Section, Toggle } from '../../components/ui'
 import { pct, scoreColor } from '../../components/format'
 import {
@@ -37,9 +37,8 @@ import { buildTree, findNode, opponentBranchKeys, orderTree, type TreeNode } fro
 import { repStart, startOf, startsWith } from '../../lib/chess/start'
 import { EnginePanel } from '../board/EnginePanel'
 import { ExplorerPanel, ExplorerSourceToggle } from '../board/ExplorerPanel'
-import { MoveInsight } from '../board/MoveInsight'
-import { GlyphPicker, MoveAnnotation } from './MoveAnnotation'
-import { builderUrl } from '../../lib/routes'
+import { MoveAnnotation, MoveMenu } from './MoveAnnotation'
+import { builderUrl, lichessAnalysisUrl } from '../../lib/routes'
 import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { confirmDialog } from '../../lib/dialog'
@@ -105,8 +104,6 @@ export function BuilderPage() {
   const [engineOn, setEngineOn] = useState(readEngineToggle)
   const [panelDb, setPanelDb] = useState(readExplorerDb)
   const [status, setStatus] = useState<string>()
-  // The threat being hovered, drawn on the board for the position it belongs to.
-  const [threatArrow, setThreatArrow] = useState<{ fen: string; arrow: Arrow }>()
 
   const fens = useMemo(() => [START_FEN, ...played.map((p) => p.fen)], [played])
   const fen = fens[cursor]
@@ -264,7 +261,6 @@ export function BuilderPage() {
   for (const { move } of elsewhere)
     if (move && move.uci !== mine?.uci && !arrows.some((a) => a.to === squaresOf(fen, move.uci).to))
       arrows.push({ ...squaresOf(fen, move.uci), brush: 'paleBlue' })
-  if (threatArrow?.fen === fen) arrows.push(threatArrow.arrow)
   // The chapter of the position on the board (the first one at the start, which only leads into chapters).
   const currentPath = path.slice(0, cursor)
   const chapter = chapters && (chapters.of(currentPath) ?? chapters.list[0])
@@ -286,6 +282,15 @@ export function BuilderPage() {
           <Link to={`/rep/${rep.id}/tree`} className="chip shrink-0 py-0.5">
             Overview
           </Link>
+          <a
+            href={lichessAnalysisUrl(formatMoves(played.slice(0, cursor).map((m) => m.san)), rep.color)}
+            target="_blank"
+            rel="noreferrer"
+            className="chip shrink-0 gap-1 py-0.5"
+            title="Open this line on the Lichess analysis board"
+          >
+            <span className="hidden sm:inline">Analyse on</span> Lichess <ExternalIcon size={12} />
+          </a>
           <span className={`ml-auto flex shrink-0 items-center gap-1.5 text-xs ${myTurn ? 'text-maple' : 'text-muted'}`}>
             <span className={`h-2 w-2 rounded-full ${myTurn ? 'bg-maple' : 'bg-faint'}`} />
             {myTurn ? 'Your move' : 'Their move'}
@@ -348,6 +353,47 @@ export function BuilderPage() {
           </div>
         )}
 
+        {showList && chapters && chapter && (
+          <section className="card">
+            <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
+              <span className="shrink-0 font-display text-[15px] font-medium">Chapters</span>
+              {start.moves.length > 0 && (
+                <span className="truncate text-muted" title="The repertoire starts here">
+                  from {formatMoves(start.sans)}
+                </span>
+              )}
+            </div>
+            <div className="max-h-[30vh] overflow-y-auto">
+              <ChapterList
+                tree={tree}
+                chapters={chapters}
+                selected={chapter}
+                onSelect={selectChapter}
+                share={shareOf}
+                extra={(ch) => {
+                  const sc = chapterScore(ch)
+                  const bu = chapterScore(ch, true)
+                  return (
+                    sc !== undefined &&
+                    bu !== undefined && (
+                      <>
+                        <span title="Built: how complete this chapter is to your target move">
+                          Built <span className={scoreColor(bu)}>{pct(bu)}</span>
+                        </span>
+                        <span title="Prep: how well you remember it, to your target move">
+                          Prep <span className={scoreColor(sc)}>{pct(sc)}</span>
+                        </span>
+                      </>
+                    )
+                  )
+                }}
+              />
+            </div>
+          </section>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-5">
         <Section
           title={myTurn ? 'Your move' : 'Opponent replies'}
           right={
@@ -440,48 +486,6 @@ export function BuilderPage() {
           />
         </Section>
 
-      </div>
-
-      <div className="flex flex-col gap-5">
-        {showList && chapters && chapter && (
-          <section className="card">
-            <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-4 py-2 text-xs">
-              <span className="shrink-0 font-display text-[15px] font-medium">Chapters</span>
-              {start.moves.length > 0 && (
-                <span className="truncate text-muted" title="The repertoire starts here">
-                  from {formatMoves(start.sans)}
-                </span>
-              )}
-            </div>
-            <div className="max-h-[30vh] overflow-y-auto">
-              <ChapterList
-                tree={tree}
-                chapters={chapters}
-                selected={chapter}
-                onSelect={selectChapter}
-                share={shareOf}
-                extra={(ch) => {
-                  const sc = chapterScore(ch)
-                  const bu = chapterScore(ch, true)
-                  return (
-                    sc !== undefined &&
-                    bu !== undefined && (
-                      <>
-                        <span title="Built: how complete this chapter is to your target move">
-                          Built <span className={scoreColor(bu)}>{pct(bu)}</span>
-                        </span>
-                        <span title="Prep: how well you remember it, to your target move">
-                          Prep <span className={scoreColor(sc)}>{pct(sc)}</span>
-                        </span>
-                      </>
-                    )
-                  )
-                }}
-              />
-            </div>
-          </section>
-        )}
-
         <section className="card">
           <div className="flex min-h-10 items-center gap-2 border-b border-line/70 px-2 py-1.5 text-xs">
             {chapters && chapter ? (
@@ -521,14 +525,15 @@ export function BuilderPage() {
                     const m = graph?.movesFrom.get(parent.key)?.find((x) => x.uci === node.uci)
                     return (
                       m && (
-                        <div className="flex items-center gap-1.5">
-                          <GlyphPicker
-                            key={m.id}
-                            id={m.id}
-                            engineGlyph={m.byMe ? undefined : engineGlyph(parent.key, m.uci)}
-                            onPick={close}
-                          />
-                        </div>
+                        <MoveMenu
+                          key={m.id}
+                          move={m}
+                          ply={node.ply}
+                          engineGlyph={m.byMe ? undefined : engineGlyph(parent.key, m.uci)}
+                          naming={naming}
+                          chapter={chapters.startingAt(node.path)}
+                          onClose={close}
+                        />
                       )
                     )
                   }}
@@ -542,18 +547,6 @@ export function BuilderPage() {
             </div>
           )}
         </section>
-        {last && (
-          <Section title={`What ${formatMoves([last.san], cursor - 1)} does`}>
-            <MoveInsight
-              key={`${fens[cursor - 1]}|${last.uci}`}
-              fen={fens[cursor - 1]}
-              uci={last.uci}
-              engine={engineOn}
-              onArrow={(arrow) => setThreatArrow(arrow ? { fen, arrow } : undefined)}
-            />
-          </Section>
-        )}
-
         <Section
           title="Engine"
           right={
