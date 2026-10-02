@@ -19,8 +19,8 @@ interface Props {
   /** Symbol to show on a move (default: the one set by the user). */
   glyphOf?: (node: TreeNode, parent: TreeNode) => Glyph | undefined
   /**
-   * Editor for a move's annotations, opened by clicking the current move
-   * (nothing for moves that can't be annotated).
+   * Editor for a move's annotations, opened by right-clicking a move or
+   * clicking the current one (nothing for moves that can't be annotated).
    */
   annotate?: (node: TreeNode, parent: TreeNode, close: () => void) => ReactNode
 }
@@ -53,14 +53,15 @@ export function ChapterLines({
 }: Props) {
   const currentId = id(current)
   const currentRef = useRef<HTMLButtonElement>(null)
-  // The editor is open on the current move; moving elsewhere closes it.
-  const [editing, setEditing] = useState(false)
+  const editRef = useRef<HTMLButtonElement>(null)
+  // The move whose editor is open; moving on the board closes it.
+  const [editing, setEditing] = useState<string>()
   const [editingAt, setEditingAt] = useState(currentId)
   if (editingAt !== currentId) {
     setEditingAt(currentId)
-    setEditing(false)
+    setEditing(undefined)
   }
-  const close = () => setEditing(false)
+  const close = () => setEditing(undefined)
 
   // Keep the current move visible inside the panel's own scroll box, never scrolling the page.
   useEffect(() => {
@@ -83,26 +84,41 @@ export function ChapterLines({
     parent.children.length > 1 && !node.byMe && share ? share(parent, node) : undefined
 
   const move = (parent: TreeNode, node: TreeNode, number: boolean, cell = false) => {
-    const isCurrent = id(node.path) === currentId
+    const nodeId = id(node.path)
+    const isCurrent = nodeId === currentId
+    const isEditing = nodeId === editing
     const glyph = glyphOf(node, parent)
     const joins = crossNote?.(parent, node) ?? []
     const s = cell ? shareOf(parent, node) : undefined
-    const editor = isCurrent && editing && annotate ? annotate(node, parent, close) : undefined
-    const canAnnotate = isCurrent && !!annotate && !node.draft
+    const editor =
+      isEditing && annotate ? (
+        node.draft ? <p className="text-sm text-warn">Save before adding notes.</p> : annotate(node, parent, close)
+      ) : undefined
+    const canAnnotate = !!annotate && !node.draft
     return (
-      <span key={id(node.path)} className="inline-flex items-baseline">
+      <span key={nodeId} className="inline-flex items-baseline">
         {number && !cell && <span className="mr-0.5 text-faint tabular-nums">{moveNumber(node.ply - 1, true)}</span>}
         <button
-          ref={isCurrent ? currentRef : undefined}
-          onClick={() => (isCurrent && annotate ? setEditing((e) => !e) : onJump(node.path))}
+          ref={(el) => {
+            if (isCurrent) currentRef.current = el
+            if (isEditing) editRef.current = el
+          }}
+          onClick={() => (isCurrent && canAnnotate ? setEditing(isEditing ? undefined : nodeId) : onJump(node.path))}
+          onContextMenu={(e) => {
+            if (!annotate) return
+            e.preventDefault()
+            setEditing(nodeId)
+          }}
           title={
             node.draft
               ? 'Not saved yet'
-              : [glyph && GLYPH_NAMES[glyph], canAnnotate && 'Click to add a symbol (!, ?, …)'].filter(Boolean).join(' · ') ||
-                undefined
+              : [glyph && GLYPH_NAMES[glyph], canAnnotate && 'Right-click for symbol, notes and chapter']
+                  .filter(Boolean)
+                  .join(' · ') || undefined
           }
-          aria-expanded={canAnnotate ? !!editor : undefined}
-          className={`rounded-md px-1 transition-colors ${
+          aria-haspopup={annotate ? 'dialog' : undefined}
+          aria-expanded={annotate ? !!editor : undefined}
+          className={`rounded-md px-1 transition-colors ${isEditing && !isCurrent ? 'ring-1 ring-maple/70' : ''} ${
             isCurrent
               ? 'bg-maple font-semibold text-on-maple shadow-[0_1px_0_rgb(0_0_0/0.4)]'
               : node.byMe
@@ -115,7 +131,7 @@ export function ChapterLines({
           {node.transposition && <span title="Transposes to another line"> ↪</span>}
         </button>
         {editor && (
-          <Popover anchor={currentRef} onClose={close} label={`Annotate ${node.san}`}>
+          <Popover anchor={editRef} onClose={close} label={`Annotate ${node.san}`}>
             {editor}
           </Popover>
         )}
