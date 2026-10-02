@@ -9,6 +9,8 @@ import { IMPORT_VERSION, IMPORT_WINDOW_MS, importChesscom, importGames, importLi
 import { parseChesscomGame, parseLichessGame, sansToUci } from './parse'
 import { builderTarget, buildGameTree, moveMark, openingGroups, pathKeys, wdlOf } from './gameTree'
 import { buildOpeningMap, defaultMinGames, edgeMoves, layoutMap, mapNodes } from './openingMap'
+import { START_FEN } from '../chess/position'
+import { evalTone, exitPly, formatEval, moveGlyph, openingPly, prepSummary, reviewMoves, terminalEval } from './review'
 
 let d: AppDB
 let n = 0
@@ -410,5 +412,56 @@ describe('import', () => {
   it('reports an unknown Chess.com user', async () => {
     const fetchFn = (async () => new Response('', { status: 404 })) as unknown as typeof fetch
     await expect(importChesscom('nobody', 0, { fetchFn }, d)).rejects.toThrow('not found')
+  })
+})
+
+describe('game review', () => {
+  async function vienna() {
+    const rep = await createRepertoire('Vienna', 'white', d, uci('e4 e5 Nc3'))
+    await addLine(rep, uci('e4 e5 Nc3 Nf6 f4 d5 fxe5 Nxe4'), {}, d)
+    return { rep, reps: await loadRepIndex(d) }
+  }
+
+  it('marks each move against the repertoire the game reached', async () => {
+    const { reps } = await vienna()
+    const a = analyzeGame(game('white', 'e4 e5 Nc3 Nf6 f4 d5 d3 exf4 Bxf4'), reps)
+    expect(reviewMoves(a, reps).map((m) => m.mark)).toEqual(['start', 'start', 'start', 'rep', 'rep', 'rep', 'forgot', 'after', 'after'])
+    expect(reviewMoves(a, reps).map((m) => m.mine)).toEqual([true, false, true, false, true, false, true, false, true])
+    expect(exitPly(a)).toBe(6)
+    expect(prepSummary(a)).toBe('You played 4.d3 instead of 4.fxe5')
+
+    const opp = analyzeGame(game('white', 'e4 e5 Nc3 Bc5'), reps)
+    expect(reviewMoves(opp, reps).at(-1)?.mark).toBe('opp-left')
+    expect(prepSummary(opp)).toBe('They left your prep with 2…Bc5')
+
+    const off = analyzeGame(game('white', 'e4 c5 Nf3'), reps)
+    expect(reviewMoves(off, reps).map((m) => m.mark)).toEqual(['start', 'uncovered', 'after'])
+    expect(exitPly(off)).toBeUndefined()
+  })
+
+  it('judges the position out of the opening from your side', () => {
+    const long = game('black', 'e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O a4 a6 Re1 h6 h3 Re8 Nbd2 Be6 Bxe6 Rxe6 Nf1 d5 exd5')
+    expect(openingPly(long)).toBe(24)
+    expect(openingPly(game('white', 'e4 e5'))).toBe(2)
+
+    expect(formatEval({ white: 86 }, 'white')).toBe('+0.9')
+    expect(formatEval({ white: 86 }, 'black')).toBe('−0.9')
+    expect(formatEval({ white: 100000 - 3, mate: 3 }, 'black')).toBe('−M3')
+    expect(evalTone({ white: 86 }, 'black')).toBe('behind')
+    expect(evalTone({ white: 30 }, 'white')).toBe('equal')
+
+    // Fool's mate: White is mated.
+    const mated = terminalEval('rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3')
+    expect(mated).toMatchObject({ mate: 0 })
+    expect(formatEval(mated!, 'black')).toBe('+#')
+    expect(terminalEval(START_FEN)).toBeNull()
+  })
+
+  it('gives engine symbols to moves that lose winning chances', () => {
+    expect(moveGlyph({ white: 30, best: 'e2e4' }, { white: 20 }, 'd2d4', 'white')).toBeUndefined()
+    expect(moveGlyph({ white: 30, best: 'e2e4' }, { white: -300 }, 'g2g4', 'white')).toBe('??')
+    expect(moveGlyph({ white: 30, best: 'e7e5' }, { white: 120 }, 'f7f6', 'black')).toBe('?!')
+    // The best move is never marked, whatever the evaluations say.
+    expect(moveGlyph({ white: 30, best: 'e2e4' }, { white: -300 }, 'e2e4', 'white')).toBeUndefined()
   })
 })

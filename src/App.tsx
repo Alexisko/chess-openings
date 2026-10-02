@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes, useNavigate } from 'react-router'
 import { useSettings } from './db/settings'
 import { BuilderPage } from './features/builder/BuilderPage'
+import { GameReview } from './features/games/GameReview'
 import { GamesPage } from './features/games/GamesPage'
 import { HomePage } from './features/dashboard/HomePage'
 import { OverviewPage } from './features/overview/OverviewPage'
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="/rep/:id/tree" element={<OverviewPage />} />
           <Route path="/train" element={<TrainPage />} />
           <Route path="/games" element={<GamesPage />} />
+          <Route path="/games/:id" element={<GameReview />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
