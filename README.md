@@ -40,7 +40,8 @@ are against the moves real opponents play.
     pins, development, castling and lines opened.
 - **Training (FSRS):**
   - *Learn* plays a new line with hints, then asks you to replay it from memory.
-  - *Review* replays lines from the start and covers every due card with as few lines as possible.
+  - *Review* replays lines from the start and covers every due card with as few lines as possible. A missed
+    move comes back a few lines later, ungraded.
   - *Train* (replaces the old weak-spot drill) tests any learned move, due or not, for everything, one colour,
     a repertoire or a chapter. Choose *Moves* (single positions after a two-move lead-in) or *Lines* (whole
     lines, a shared start asked once). Moves you missed recently or haven't been asked for a while come up

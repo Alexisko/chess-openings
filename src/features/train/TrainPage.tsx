@@ -460,7 +460,8 @@ function Session({
   /** Where to start another session like this one. */
   again?: string
 }) {
-  // Training adds missed moves back to the queue.
+  // Review and training add missed moves back to the queue.
+  const retries = mode === 'review' || mode === 'train'
   const [queue, setQueue] = useState(initialQueue)
   // Answer records, updated as you answer.
   const [know, setKnow] = useState(initialKnow)
@@ -653,8 +654,8 @@ function Session({
         }))
         record = noteAnswer(exp.fromKey, false)
         await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
-        // In training, a missed move is asked once more a little later.
-        if (mode === 'train') {
+        // In review and training, a missed move is asked once more a little later (not graded).
+        if (retries) {
           const retry: QueuedRun = { rep, run: makeRun(current.run.line, [exp.fromKey], MOVE_LEAD_IN), continuesIn: [], retry: true }
           setQueue((q) => {
             const at = Math.min(q.length, index + 1 + RETRY_GAP)
@@ -666,7 +667,7 @@ function Session({
       if (uci !== '0000') playSound('wrong')
       setFeedback({
         kind: 'wrong',
-        text: `Not your repertoire move. Play ${exp?.san}.${mode === 'train' && record ? ' It will come back in a moment.' : ''}`,
+        text: `Not your repertoire move. Play ${exp?.san}.${retries && record ? ' It will come back in a moment.' : ''}`,
         record,
       })
       setBoardVersion((v) => v + 1)
