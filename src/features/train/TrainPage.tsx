@@ -787,8 +787,8 @@ function Session({
       <div className="flex items-center gap-3 text-xs text-muted">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-brass to-maple transition-[width] duration-500 ease-out"
-            style={{ width: `${progress * 100}%` }}
+            className="h-full origin-left rounded-full bg-maple transition-transform duration-500 ease-out"
+            style={{ transform: `scaleX(${progress})` }}
           />
         </div>
         <span className="tabular-nums">
@@ -974,7 +974,7 @@ function HistoryButton({
 
 /** The moves so far, numbered; click one to look at the position after it. */
 function MoveList({ sans, view, onJump }: { sans: string[]; view: number; onJump: (ply: number) => void }) {
-  if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-faint">Starting position</p>
+  if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-muted">Starting position</p>
   return (
     <p className="font-display text-[17px] leading-relaxed">
       {sans.map((san, i) => (

@@ -100,7 +100,7 @@ function ThreatLine({ threat, onArrow }: { threat: Threat | null | undefined; on
           </>
         )}
       </p>
-      {rest && <p className="text-xs text-faint">then {rest}</p>}
+      {rest && <p className="text-xs text-muted">then {rest}</p>}
     </div>
   )
 }

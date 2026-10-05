@@ -1,10 +1,11 @@
 import { ChevronDown } from './icons'
 import { KNOWLEDGE_HELP, KNOWLEDGE_LABEL, KNOWLEDGE_ORDER, type Knowledge } from '../lib/srs/knowledge'
 
+// Graded like every score: moss for known, amber in between, oxblood for weak.
 const KNOWLEDGE_BG: Record<Knowledge, string> = {
   mastered: 'bg-accent',
-  solid: 'bg-accent/50',
-  learning: 'bg-info',
+  solid: 'bg-accent/40',
+  learning: 'bg-warn',
   shaky: 'bg-bad',
   new: 'bg-line-strong',
 }
@@ -12,7 +13,7 @@ const KNOWLEDGE_BG: Record<Knowledge, string> = {
 const KNOWLEDGE_TEXT: Record<Knowledge, string> = {
   mastered: 'text-accent',
   solid: 'text-accent',
-  learning: 'text-info',
+  learning: 'text-warn',
   shaky: 'text-bad',
   new: 'text-faint',
 }

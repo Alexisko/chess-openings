@@ -34,7 +34,7 @@
   --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
   --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  --animate-pop: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-pop: pop 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-shake: shake 0.4s ease-in-out both;
 
   @keyframes rise {
@@ -94,7 +94,8 @@ body,
   --color-faint: #a08870;
   --color-maple: #8f5427;
   --color-on-maple: #fcf4e6;
-  --color-brass: #a4731b;
+  /* Darker than the walnut theme's brass so small brass labels reach 4.5:1 on maple. */
+  --color-brass: #8a5f12;
   --color-accent: #4f7a29;
   --color-accent-strong: #3f661f;
   --color-warn: #b3621a;
