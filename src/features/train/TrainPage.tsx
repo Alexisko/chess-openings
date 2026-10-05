@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Card as FsrsCard } from 'ts-fsrs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
@@ -49,6 +49,7 @@ import {
 } from '../../lib/srs/plan'
 import { isNew } from '../../lib/srs/scheduler'
 import { LineRun } from '../../lib/srs/session'
+import { useFocusMode } from '../../lib/focusMode'
 import { playSound } from '../../lib/sound'
 import { MoveInsight } from '../board/MoveInsight'
 
@@ -589,6 +590,9 @@ function Session({
     return () => clearTimeout(t)
   }, [run, finished, lastLine])
 
+  // On a phone the session takes the whole screen; the summary brings the app back.
+  useFocusMode(!!run)
+
   // What one step of the session is, for labels.
   const item = unit === 'moves' ? 'move' : 'line'
   if (!current || !run)
@@ -676,6 +680,9 @@ function Session({
   }
 
   const giveUp = () => onMove('0000')
+  // Show move keeps its place under the board, disabled while there's nothing to show.
+  const canShow = run.awaitingUser && !run.demo && !run.mustRetry && !browsing
+  const endSession = () => setIndex(queue.length)
   const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
   const { startPly, endPly } = current.run
   const progress = (index + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / queue.length
@@ -695,6 +702,13 @@ function Session({
             {mode === 'learn' && <span className="text-brass">· {pass === 'demo' ? 'watch' : 'recall'}</span>}
             {unit && <span className="text-brass">· {unit}</span>}
           </span>
+          <button
+            className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink md:hidden"
+            onClick={endSession}
+            aria-label="End session"
+          >
+            <CrossIcon size={20} />
+          </button>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
@@ -723,24 +737,26 @@ function Session({
           onMove={onMove}
           flash={flash}
         />
-        <div className="grid grid-cols-4 gap-2" title="Look back at the moves so far · Keyboard: ← →">
-          <button className="btn-ghost" onClick={() => setView(0)} disabled={view <= 0} aria-label="Initial position">
-            <FirstIcon />
-          </button>
-          <button className="btn-ghost" onClick={() => setView(view - 1)} disabled={view <= 0} aria-label="Back">
-            <PrevIcon />
-          </button>
-          <button className="btn-ghost" onClick={() => setView(view + 1)} disabled={!browsing} aria-label="Forward">
-            <NextIcon />
-          </button>
-          <button
-            className={browsing ? 'btn-primary' : 'btn-ghost'}
-            onClick={() => setView(live)}
-            disabled={!browsing}
-            aria-label="Back to the current position"
-          >
-            <LastIcon />
-          </button>
+        <div className="grid grid-cols-2 gap-2">
+          {explaining ? (
+            <button className="btn-primary col-span-2 min-h-12 text-[15px]" onClick={() => setContinued(fbId)} autoFocus>
+              Continue
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn-ghost min-h-12 text-[15px]"
+                onClick={giveUp}
+                disabled={!canShow}
+                title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}
+              >
+                <EyeIcon size={18} /> Show move
+              </button>
+              <button className="btn-ghost min-h-12 text-[15px]" onClick={() => goToLine(index + 1)}>
+                <SkipIcon size={18} /> Skip {item}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -764,46 +780,47 @@ function Session({
 
         {explaining && (
           <div className="card animate-pop px-4 py-3">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="eyebrow">What {explaining.label} does</span>
-              <button className="btn-primary ml-auto py-1 text-xs" onClick={() => setContinued(fbId)} autoFocus>
-                Continue
-              </button>
-            </div>
+            <div className="eyebrow mb-2">What {explaining.label} does</div>
             <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
           </div>
         )}
 
         <div className="card px-4 py-3">
-          <div className="mb-1.5 flex items-baseline gap-2">
+          <div className="-mr-2 mb-1 flex items-center gap-2">
             <span className="eyebrow">Line so far</span>
-            {browsing && (
-              <button className="ml-auto text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
-                Looking back · return to the current position
-              </button>
-            )}
+            <div className="ml-auto flex" title="Look back at the moves so far · Keyboard: ← →">
+              <HistoryButton onClick={() => setView(0)} disabled={view <= 0} label="Initial position">
+                <FirstIcon size={18} />
+              </HistoryButton>
+              <HistoryButton onClick={() => setView(view - 1)} disabled={view <= 0} label="Back">
+                <PrevIcon size={18} />
+              </HistoryButton>
+              <HistoryButton onClick={() => setView(view + 1)} disabled={!browsing} label="Forward">
+                <NextIcon size={18} />
+              </HistoryButton>
+              <HistoryButton onClick={() => setView(live)} disabled={!browsing} label="Back to the current position" on={browsing}>
+                <LastIcon size={18} />
+              </HistoryButton>
+            </div>
           </div>
+          {browsing && (
+            <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
+              Looking back · return to the current position
+            </button>
+          )}
           <OpeningTrail trail={trail} className="mb-1" />
           <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
           {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {run.awaitingUser && !run.demo && !run.mustRetry && !browsing && (
-            <button className="btn-ghost" onClick={giveUp} title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}>
-              <EyeIcon size={16} /> Show move
-            </button>
-          )}
           <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
             <PrevIcon size={16} /> Previous {item}
-          </button>
-          <button className="btn-ghost" onClick={() => goToLine(index + 1)}>
-            <SkipIcon size={16} /> Skip {item}
           </button>
           <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
             Open in builder
           </Link>
-          <button className="btn-ghost ml-auto" onClick={() => setIndex(queue.length)}>
+          <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
             End session
           </button>
         </div>
@@ -850,6 +867,35 @@ function usePunish(move: RepMove | undefined): '?' | '??' | undefined {
   if (!move) return undefined
   const g = move.glyph !== undefined ? move.glyph : evals && engineGlyphOf(evals, move.fromKey, move.fromFen, move.uci, move.toKey)
   return g === '?' || g === '??' ? g : undefined
+}
+
+/** A compact step button for looking back through the line; touch-sized on touch screens. */
+function HistoryButton({
+  onClick,
+  disabled,
+  label,
+  on,
+  children,
+}: {
+  onClick: () => void
+  disabled: boolean
+  label: string
+  /** Highlighted: the way back to the live position while looking back. */
+  on?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      className={`grid size-9 place-items-center rounded-lg transition pointer-coarse:size-11 disabled:pointer-events-none disabled:opacity-30 ${
+        on ? 'bg-brass/12 text-brass' : 'text-muted hover:bg-surface-3 hover:text-ink'
+      }`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+    >
+      {children}
+    </button>
+  )
 }
 
 /** The moves so far, numbered; click one to look at the position after it. */

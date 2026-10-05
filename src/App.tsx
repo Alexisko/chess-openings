@@ -13,6 +13,7 @@ import { TrainPage } from './features/train/TrainPage'
 import { DialogHost } from './components/DialogHost'
 import { GamesIcon, HomeIcon, MoonIcon, SettingsIcon, SunIcon, TrainIcon } from './components/icons'
 import { completeLoginIfCallback } from './lib/auth/lichess'
+import { useInFocusMode } from './lib/focusMode'
 import { startAutoSync, useSyncStatus } from './lib/sync/auto'
 import { useTheme } from './lib/theme'
 
@@ -29,6 +30,8 @@ export default function App() {
   const [loginError, setLoginError] = useState<string>()
   const [theme, toggleTheme] = useTheme()
   const sync = useSyncStatus()
+  // A training session hides the header and bottom nav on phones.
+  const focus = useInFocusMode()
 
   useEffect(() => startAutoSync(), [])
 
@@ -43,8 +46,12 @@ export default function App() {
   }, [navigate])
 
   return (
-    <div className="flex min-h-dvh flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
-      <header className="sticky top-0 z-30 border-b border-line/70 bg-bg/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <div
+      className={`flex min-h-dvh flex-col md:pb-0 ${focus ? 'pb-[env(safe-area-inset-bottom)]' : 'pb-[calc(4.25rem+env(safe-area-inset-bottom))]'}`}
+    >
+      <header
+        className={`sticky top-0 z-30 border-b border-line/70 bg-bg/80 pt-[env(safe-area-inset-top)] backdrop-blur-md ${focus ? 'max-md:hidden' : ''}`}
+      >
         <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
           <NavLink to="/" className="group flex items-center gap-2.5">
             <img
@@ -52,7 +59,7 @@ export default function App() {
               alt=""
               className="h-8 w-8 rounded-lg shadow-[0_0_0_1px_rgb(217_170_85/0.25)] transition group-hover:shadow-[0_0_0_1px_rgb(217_170_85/0.6)]"
             />
-            <span className="font-display text-lg leading-none font-medium tracking-tight">
+            <span className="font-display text-lg leading-none font-medium tracking-tight whitespace-nowrap">
               Opening <span className="text-brass italic">Trainer</span>
             </span>
           </NavLink>
@@ -77,7 +84,7 @@ export default function App() {
           </nav>
           <NavLink
             to="/settings"
-            className={`ml-auto flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs md:ml-2 ${
+            className={`ml-auto flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap md:ml-2 ${
               settings?.lichessUser ? 'border-line text-muted hover:text-ink' : 'border-warn/40 text-warn hover:bg-warn/10'
             }`}
             title={
@@ -101,7 +108,13 @@ export default function App() {
                       : 'bg-accent'
               }`}
             />
-            {settings?.lichessUser ?? 'Not connected'}
+            {settings?.lichessUser ?? (
+              <>
+                {/* Short on phones, so the pill fits beside the wordmark. */}
+                <span className="sm:hidden">Log in</span>
+                <span className="max-sm:hidden">Not connected</span>
+              </>
+            )}
           </NavLink>
           <button
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-muted transition hover:border-line-strong hover:text-brass"
@@ -125,7 +138,9 @@ export default function App() {
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 md:py-7">
+      <main
+        className={`mx-auto w-full max-w-6xl flex-1 px-4 py-5 md:py-7 ${focus ? 'max-md:pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}
+      >
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/plan/:color" element={<PlanPage />} />
@@ -141,7 +156,9 @@ export default function App() {
 
       <DialogHost />
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line/80 bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+      <nav
+        className={`fixed inset-x-0 bottom-0 z-30 flex border-t border-line/80 bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden ${focus ? 'hidden' : ''}`}
+      >
         {NAV.map((n) => (
           <NavLink
             key={n.to}
