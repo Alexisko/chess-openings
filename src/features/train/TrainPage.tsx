@@ -377,11 +377,6 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
           <h1 className="page-title mt-0.5">What do you really know?</h1>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-relaxed text-muted">
-        Any move you have learned can come up, due or not. Moves you missed recently or haven't been asked for a while come up
-        more often; a move you miss comes back a few questions later. Early right answers don't change your review schedule,
-        but they count towards how well you know each move.
-      </p>
       <div className="mt-5">
         <div className="eyebrow mb-2">Your moves here</div>
         <KnowledgeBar counts={counts} />
@@ -421,6 +416,12 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
           Home
         </Link>
       </div>
+      {/* How it works, after the choice: the choice is what most visits are for. */}
+      <p className="mt-5 border-t border-line/70 pt-4 text-xs leading-relaxed text-muted">
+        Any move you have learned can come up, due or not. Moves you missed recently or haven't been asked for a while come up
+        more often; a move you miss comes back a few questions later. Early right answers don't change your review schedule,
+        but they count towards how well you know each move.
+      </p>
     </div>
   )
 }
@@ -685,170 +686,181 @@ function Session({
   const endSession = () => setIndex(queue.length)
   const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
   const { startPly, endPly } = current.run
-  const progress = (index + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / queue.length
+  // Progress counts the planned steps only: a missed move asked again doesn't push the end away.
+  const planned = queue.length - queue.filter((q) => q.retry).length
+  const plannedBefore = queue.slice(0, index).filter((q) => !q.retry).length
+  const step = current.retry ? plannedBefore : plannedBefore + 1
+  const progress = current.retry
+    ? plannedBefore / planned
+    : (plannedBefore + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / planned
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2.5">
-          <ColorDot color={rep.color} size={14} />
-          <span className="truncate font-display text-xl font-medium tracking-tight">
-            {rep.name}
-            {chapter && <span className="text-muted"> · {chapter}</span>}
-          </span>
-          <span className="chip ml-auto shrink-0 py-0.5">
-            <ModeIcon mode={mode} size={13} />
-            {MODE_TITLE[mode]}
-            {mode === 'learn' && <span className="text-brass">· {pass === 'demo' ? 'watch' : 'recall'}</span>}
-            {unit && <span className="text-brass">· {unit}</span>}
-          </span>
-          <button
-            className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink md:hidden"
-            onClick={endSession}
-            aria-label="End session"
-          >
-            <CrossIcon size={20} />
-          </button>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-brass to-maple transition-[width] duration-500 ease-out"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
-          <span className="tabular-nums">
-            {item} {index + 1} / {queue.length}
-            {practice && (
-              <span className="text-brass" title="Played again: not graded">
-                {' '}
-                · {current.retry ? 'second try' : 'replay'}, not graded
-              </span>
-            )}
-          </span>
-        </div>
-        <Board
-          key={boardVersion}
-          fen={fen}
-          orientation={rep.color}
-          movable={run.awaitingUser && !browsing ? rep.color : 'none'}
-          lastMove={lastMove}
-          arrows={arrows}
-          onMove={onMove}
-          flash={flash}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          {explaining ? (
-            <button className="btn-primary col-span-2 min-h-12 text-[15px]" onClick={() => setContinued(fbId)} autoFocus>
-              Continue
-            </button>
-          ) : (
-            <>
-              <button
-                className="btn-ghost min-h-12 text-[15px]"
-                onClick={giveUp}
-                disabled={!canShow}
-                title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}
-              >
-                <EyeIcon size={18} /> Show move
-              </button>
-              <button className="btn-ghost min-h-12 text-[15px]" onClick={() => goToLine(index + 1)}>
-                <SkipIcon size={18} /> Skip {item}
-              </button>
-            </>
+    // The board is as large as fits above its buttons (at most 560px). Below lg, one column the board's width.
+    <div className="mx-auto flex max-w-[var(--board)] flex-col gap-3 [--board:min(560px,max(320px,calc(100dvh-15rem)))] lg:max-w-none">
+      <div className="flex items-center gap-2.5">
+        <ColorDot color={rep.color} size={14} />
+        <div className="min-w-0 font-display text-xl leading-tight font-medium tracking-tight">
+          <span className="block truncate sm:inline">{rep.name}</span>
+          {chapter && (
+            <span className="block truncate text-sm text-muted sm:inline sm:text-xl">
+              <span className="max-sm:hidden"> · </span>
+              {chapter}
+            </span>
           )}
         </div>
+        <span className="chip ml-auto shrink-0 py-0.5" title={MODE_TITLE[mode]}>
+          <ModeIcon mode={mode} size={13} />
+          <span className="max-sm:sr-only">{MODE_TITLE[mode]}</span>
+          {mode === 'learn' && <span className="text-brass">· {pass === 'demo' ? 'watch' : 'recall'}</span>}
+          {unit && <span className="text-brass max-sm:hidden">· {unit}</span>}
+        </span>
+        <button
+          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink md:hidden"
+          onClick={endSession}
+          aria-label="End session"
+        >
+          <CrossIcon size={20} />
+        </button>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-brass to-maple transition-[width] duration-500 ease-out"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+        <span className="tabular-nums">
+          {item} {step} / {planned}
+          {practice && (
+            <span className="text-brass" title="Played again: not graded">
+              {' '}
+              · {current.retry ? 'second try' : 'replay'}, not graded
+            </span>
+          )}
+        </span>
       </div>
 
-      <div className="flex flex-col gap-4 md:pt-[4.25rem]">
-        {punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs && (
-          <div className="card flex animate-pop items-baseline gap-2 border-bad/40 px-4 py-3 text-sm">
-            <span className={`font-display text-lg font-semibold ${GLYPH_TONE[punish]}`}>{punish}</span>
-            <span>
-              {formatMoves([lastTheirs.san], start.moves.length + run.ply - 1)}
-              {punish} is {punish === '??' ? 'a blunder' : 'a mistake'}. Find the move that punishes it.
+      <div className="grid gap-3 lg:grid-cols-[var(--board)_minmax(0,1fr)] lg:gap-5">
+        <div className="flex flex-col gap-3">
+          <Board
+            key={boardVersion}
+            fen={fen}
+            orientation={rep.color}
+            movable={run.awaitingUser && !browsing ? rep.color : 'none'}
+            lastMove={lastMove}
+            arrows={arrows}
+            onMove={onMove}
+            flash={flash}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            {explaining ? (
+              <button className="btn-primary col-span-2 min-h-12 text-[15px]" onClick={() => setContinued(fbId)} autoFocus>
+                Continue
+              </button>
+            ) : (
+              <>
+                <button
+                  className="btn-ghost min-h-12 text-[15px]"
+                  onClick={giveUp}
+                  disabled={!canShow}
+                  title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}
+                >
+                  <EyeIcon size={18} /> Show move
+                </button>
+                <button className="btn-ghost min-h-12 text-[15px]" onClick={() => goToLine(index + 1)}>
+                  <SkipIcon size={18} /> Skip {item}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <FeedbackCard
+            key={fbId || `${index}-${pass}`}
+            feedback={feedback}
+            awaiting={run.awaitingUser}
+            demo={run.demo}
+            autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
+            punish={
+              punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs
+                ? { glyph: punish, move: formatMoves([lastTheirs.san], start.moves.length + run.ply - 1) }
+                : undefined
+            }
+          />
+
+          {explaining && (
+            <div className="card animate-pop px-4 py-3">
+              <div className="eyebrow mb-2">What {explaining.label} does</div>
+              <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
+            </div>
+          )}
+
+          <div className="card px-4 py-3">
+            <div className="-mr-2 mb-1 flex items-center gap-2">
+              <span className="eyebrow">Line so far</span>
+              <div className="ml-auto flex" title="Look back at the moves so far · Keyboard: ← →">
+                <HistoryButton onClick={() => setView(0)} disabled={view <= 0} label="Initial position">
+                  <FirstIcon size={18} />
+                </HistoryButton>
+                <HistoryButton onClick={() => setView(view - 1)} disabled={view <= 0} label="Back">
+                  <PrevIcon size={18} />
+                </HistoryButton>
+                <HistoryButton onClick={() => setView(view + 1)} disabled={!browsing} label="Forward">
+                  <NextIcon size={18} />
+                </HistoryButton>
+                <HistoryButton onClick={() => setView(live)} disabled={!browsing} label="Back to the current position" on={browsing}>
+                  <LastIcon size={18} />
+                </HistoryButton>
+              </div>
+            </div>
+            {browsing && (
+              <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
+                Looking back · return to the current position
+              </button>
+            )}
+            <OpeningTrail trail={trail} className="mb-1" />
+            <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
+            {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
+          </div>
+
+          <div className="flex gap-2 lg:mt-auto">
+            <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
+              <PrevIcon size={16} /> Previous {item}
+            </button>
+            <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
+              Open in builder
+            </Link>
+            <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
+              End session
+            </button>
+          </div>
+          <div className="flex gap-4 text-xs text-muted">
+            <span className="flex items-center gap-1.5">
+              <CheckIcon size={14} className="text-accent" />
+              <span className="font-semibold text-ink tabular-nums">{stats.correct}</span> correct
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CrossIcon size={14} className="text-bad" />
+              <span className="font-semibold text-ink tabular-nums">{stats.wrong}</span> mistake{stats.wrong === 1 ? '' : 's'}
+            </span>
+            <span className="ml-auto" title="Pause after each correct move to show what it threatens and does">
+              <Toggle
+                label="Explain moves"
+                checked={explain}
+                onChange={(on) => {
+                  setExplain(on)
+                  // Turning it on later shouldn't open an explanation for a move already past.
+                  setContinued(fbId)
+                  try {
+                    localStorage.setItem('explainMoves', on ? 'on' : 'off')
+                  } catch {
+                    // Preference is optional.
+                  }
+                }}
+              />
             </span>
           </div>
-        )}
-        <FeedbackCard
-          key={fbId || `${index}-${pass}`}
-          feedback={feedback}
-          awaiting={run.awaitingUser}
-          demo={run.demo}
-          autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
-        />
-
-        {explaining && (
-          <div className="card animate-pop px-4 py-3">
-            <div className="eyebrow mb-2">What {explaining.label} does</div>
-            <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
-          </div>
-        )}
-
-        <div className="card px-4 py-3">
-          <div className="-mr-2 mb-1 flex items-center gap-2">
-            <span className="eyebrow">Line so far</span>
-            <div className="ml-auto flex" title="Look back at the moves so far · Keyboard: ← →">
-              <HistoryButton onClick={() => setView(0)} disabled={view <= 0} label="Initial position">
-                <FirstIcon size={18} />
-              </HistoryButton>
-              <HistoryButton onClick={() => setView(view - 1)} disabled={view <= 0} label="Back">
-                <PrevIcon size={18} />
-              </HistoryButton>
-              <HistoryButton onClick={() => setView(view + 1)} disabled={!browsing} label="Forward">
-                <NextIcon size={18} />
-              </HistoryButton>
-              <HistoryButton onClick={() => setView(live)} disabled={!browsing} label="Back to the current position" on={browsing}>
-                <LastIcon size={18} />
-              </HistoryButton>
-            </div>
-          </div>
-          {browsing && (
-            <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
-              Looking back · return to the current position
-            </button>
-          )}
-          <OpeningTrail trail={trail} className="mb-1" />
-          <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
-          {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
-            <PrevIcon size={16} /> Previous {item}
-          </button>
-          <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
-            Open in builder
-          </Link>
-          <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
-            End session
-          </button>
-        </div>
-        <div className="flex gap-4 text-xs text-muted">
-          <span className="flex items-center gap-1.5">
-            <CheckIcon size={14} className="text-accent" />
-            <span className="font-semibold text-ink tabular-nums">{stats.correct}</span> correct
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CrossIcon size={14} className="text-bad" />
-            <span className="font-semibold text-ink tabular-nums">{stats.wrong}</span> mistake{stats.wrong === 1 ? '' : 's'}
-          </span>
-          <span className="ml-auto" title="Pause after each correct move to show what it threatens and does">
-            <Toggle
-              label="Explain moves"
-              checked={explain}
-              onChange={(on) => {
-                setExplain(on)
-                // Turning it on later shouldn't open an explanation for a move already past.
-                setContinued(fbId)
-                try {
-                  localStorage.setItem('explainMoves', on ? 'on' : 'off')
-                } catch {
-                  // Preference is optional.
-                }
-              }}
-            />
-          </span>
         </div>
       </div>
     </div>
@@ -929,12 +941,15 @@ function FeedbackCard({
   awaiting,
   demo,
   autoMine,
+  punish,
 }: {
   feedback?: Feedback
   awaiting: boolean
   demo: boolean
   /** The next move is one of the owner's mastered moves, played automatically. */
   autoMine: boolean
+  /** The opponent's last move is a mistake to punish. */
+  punish?: { glyph: '?' | '??'; move: string }
 }) {
   const kind = feedback?.kind
   const tone =
@@ -967,6 +982,15 @@ function FeedbackCard({
     <div className={`card flex min-h-20 animate-pop items-center gap-3.5 px-4 py-3.5 ${tone}`} aria-live="polite">
       <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${iconCls}`}>{icon}</span>
       <div className="min-w-0">
+        {punish && (
+          <p className="mb-1 text-sm">
+            <span className={`font-semibold ${GLYPH_TONE[punish.glyph]}`}>
+              {punish.move}
+              {punish.glyph}
+            </span>{' '}
+            is {punish.glyph === '??' ? 'a blunder' : 'a mistake'}. Find the move that punishes it.
+          </p>
+        )}
         <p className="text-[15px] leading-snug">{feedback?.text ?? (awaiting ? 'Your move.' : autoMine ? 'Playing known moves…' : 'Watch the reply…')}</p>
         {feedback?.record && (
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">

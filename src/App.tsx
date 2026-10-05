@@ -139,7 +139,7 @@ export default function App() {
       )}
 
       <main
-        className={`mx-auto w-full max-w-6xl flex-1 px-4 py-5 md:py-7 ${focus ? 'max-md:pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}
+        className={`mx-auto w-full max-w-6xl flex-1 px-4 py-5 md:py-7 ${focus ? 'max-md:pt-[max(0.75rem,env(safe-area-inset-top))] max-md:pb-2' : ''}`}
       >
         <Routes>
           <Route path="/" element={<HomePage />} />
