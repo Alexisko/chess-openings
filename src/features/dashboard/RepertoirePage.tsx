@@ -26,6 +26,7 @@ import { renameChapter } from '../../lib/openings/renameChapter'
 import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
 import { builderUrl, repertoireUrl, trainUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
+import { startLogin } from '../../lib/auth/lichess'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 import { describeRecord, emptyCounts, knowledgeOf, weakness } from '../../lib/srs/knowledge'
 import { myMove, pathTo } from '../../lib/chess/graph'
@@ -52,7 +53,10 @@ export function RepertoirePage() {
   const { id } = useParams()
   const data = useRepertoire(id)
   const settings = useSettings()
-  const prep = usePreparedness(data, settings?.explorerFilter, settings?.prepDepth ?? 6)
+  const measuredPrep = usePreparedness(data, settings?.explorerFilter, settings?.prepDepth ?? 6)
+  // Without the explorer every prepared reply would look like the only one played: no scores then.
+  const measured = !!settings?.lichessToken
+  const prep = measured ? measuredPrep : undefined
   const navigate = useNavigate()
 
   if (data === undefined || !settings) return null
@@ -122,7 +126,16 @@ export function RepertoirePage() {
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-2 md:items-start">
         <Section title={`Preparedness to move ${settings.prepDepth}`}>
-          {!prep ? (
+          {!measured ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <p className="min-w-0 flex-1 basis-56 text-sm leading-relaxed text-muted">
+                Preparedness weighs opponents’ replies by the Lichess explorer, which needs a Lichess login.
+              </p>
+              <button className="btn-ghost py-1.5 text-xs" onClick={() => startLogin()}>
+                Log in with Lichess
+              </button>
+            </div>
+          ) : !prep ? (
             <p className="text-sm text-muted">Calculating…</p>
           ) : (
             <>
@@ -185,13 +198,15 @@ export function RepertoirePage() {
           )}
         </Section>
 
-        <Section title="Biggest gaps">
-          {!prep ? null : prep.gaps.length === 0 ? (
-            <p className="text-sm text-muted">No gaps up to move {settings.prepDepth}. Time to go deeper!</p>
-          ) : (
-            <GapList data={data} gaps={prep.gaps.slice(0, 12)} />
-          )}
-        </Section>
+        {measured && (
+          <Section title="Biggest gaps">
+            {!prep ? null : prep.gaps.length === 0 ? (
+              <p className="text-sm text-muted">No gaps up to move {settings.prepDepth}. Time to go deeper!</p>
+            ) : (
+              <GapList data={data} gaps={prep.gaps.slice(0, 12)} />
+            )}
+          </Section>
+        )}
       </div>
 
       <MoveKnowledge data={data} />

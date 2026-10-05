@@ -39,6 +39,10 @@ export function RepertoiresPage() {
   // The Games page links here with the colour and moves of an opening you meet but haven't prepared.
   const color: Color = (params.get('newColor') ?? params.get('color')) === 'black' ? 'black' : 'white'
 
+  if (!settings) return null
+  // Every score here weighs opponents' replies by the explorer: without it they'd read 100% built.
+  if (!settings.lichessToken) return <LoginGate />
+
   return (
     <div className="stagger flex flex-col gap-5">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
@@ -60,7 +64,26 @@ export function RepertoiresPage() {
         </div>
       </header>
 
-      {settings && <ColorRepertoire key={color} color={color} settings={settings} />}
+      <ColorRepertoire key={color} color={color} settings={settings} />
+    </div>
+  )
+}
+
+/** The repertoire needs the opening explorer, and the explorer needs a Lichess login. */
+function LoginGate() {
+  return (
+    <div className="stagger flex flex-col gap-5">
+      <h1 className="page-title">Repertoire</h1>
+      <section className="card max-w-xl p-6">
+        <h2 className="font-display text-xl font-medium tracking-tight">Connect Lichess to see your repertoire</h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Your repertoire is measured against what opponents actually play, from the Lichess opening explorer, and the
+          explorer needs a Lichess login. No permissions are requested.
+        </p>
+        <button className="btn-primary mt-5" onClick={() => startLogin()}>
+          Log in with Lichess
+        </button>
+      </section>
     </div>
   )
 }
@@ -367,9 +390,9 @@ function Summary({
           </p>
         </div>
       ) : (
-        <p className="text-sm text-muted">{measuring(state, settings)}</p>
+        <p className="text-sm text-muted">{measuring(state)}</p>
       )}
-      <ExplorerStatus state={state} settings={settings} />
+      <ExplorerStatus state={state} />
 
       {choices.length > 0 && (
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-line/70 pt-4">
@@ -572,23 +595,17 @@ function SlotBoard({ path, color }: { path: string[]; color: Color }) {
 }
 
 /** What the colour's score is waiting for. */
-function measuring({ plan, pending }: PlanState, settings: Settings) {
-  if (!settings.lichessToken && plan.needed.length) return 'Not measured: the scores need opponent statistics from the Lichess explorer.'
+function measuring({ pending }: PlanState) {
   if (pending) return `Measuring: downloading opponent statistics, ${pending} ${pending === 1 ? 'position' : 'positions'} left.`
   return 'Measuring…'
 }
 
 /** Why opponent statistics are missing, and what to do about it. Silent while nothing is missing. */
-function ExplorerStatus({ state: { plan, fetchError }, settings }: { state: PlanState; settings: Settings }) {
-  const loggedOut = !settings.lichessToken
-  if ((loggedOut || fetchError instanceof AuthRequiredError) && plan.needed.length)
+function ExplorerStatus({ state: { plan, fetchError } }: { state: PlanState }) {
+  if (fetchError instanceof AuthRequiredError && plan.needed.length)
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted">
-        <span className="min-w-0 flex-1 basis-60">
-          {loggedOut
-            ? 'Connect Lichess to see how often opponents play each reply. No permissions are requested.'
-            : 'Your Lichess login has expired: log in again to download opponent statistics.'}
-        </span>
+        <span className="min-w-0 flex-1 basis-60">Your Lichess login has expired: log in again to download opponent statistics.</span>
         <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => startLogin()}>
           Log in with Lichess
         </button>

@@ -169,10 +169,12 @@ function ColorTraining({ color, hasReps, settings }: { color: Color; hasReps: bo
   const state = usePlan(color, settings)
   const [scores, report] = useScoreMap()
   const plan = state?.plan
-  const score = plan ? planScore(plan, scores) : null
+  // Without the explorer every prepared reply would look like the only one played: no scores then.
+  const measured = !!settings.lichessToken
+  const score = plan && measured ? planScore(plan, scores) : null
   const next = plan?.decisions[0]
   // Games that leave your prep in each line today: how often it's met times what you wouldn't play.
-  const lines = (plan?.covered ?? [])
+  const lines = (measured ? (plan?.covered ?? []) : [])
     .map((node) => ({ node, score: scores.get(node.key) }))
     .filter((l): l is { node: CoveredNode; score: RepScore } => !!l.score && l.node.reach !== null)
     .map((l) => ({ ...l, lost: l.node.reach! * (1 - l.score.remembered) }))
@@ -244,7 +246,7 @@ function ColorTraining({ color, hasReps, settings }: { color: Color; hasReps: bo
               </ul>
             </div>
           )}
-          {score === null && !settings.lichessToken && !!plan?.needed.length && (
+          {!measured && (
             <p className="text-xs text-muted">Scores need the Lichess explorer: connect Lichess to see them.</p>
           )}
         </div>
