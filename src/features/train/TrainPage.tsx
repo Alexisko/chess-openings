@@ -859,7 +859,17 @@ function Session({
           )}
 
           <div className="card px-4 py-3">
-            <div className="eyebrow mb-1.5">Line so far</div>
+            <div className="mb-1.5 flex items-baseline gap-2">
+              <span className="eyebrow">Line so far</span>
+              <Link
+                className="-my-1 ml-auto flex items-center gap-1 py-1 text-xs font-medium text-muted hover:text-brass"
+                to={builderUrl(rep.id, path.ucis.slice(0, view))}
+                title="Open this position in the builder (ends the session)"
+                aria-description="Ends the session"
+              >
+                Open in builder <ArrowRight size={13} />
+              </Link>
+            </div>
             {browsing && (
               <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
                 Looking back · return to the current position
@@ -870,8 +880,8 @@ function Session({
             {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
           </div>
 
-          {/* Every button stays in place (disabled rather than removed), so the row never reflows. */}
-          <div className="flex flex-wrap gap-2 lg:mt-auto">
+          {/* One row whose buttons stay in place (disabled rather than removed), so it never reflows. */}
+          <div className="flex gap-2 lg:mt-auto">
             <button
               className="btn-ghost"
               onClick={giveUp}
@@ -880,15 +890,12 @@ function Session({
             >
               <EyeIcon size={16} /> Show move
             </button>
-            <button className="btn-ghost" onClick={() => goToLine(index + 1)}>
-              <SkipIcon size={16} /> Skip {item}
+            <button className="btn-ghost" onClick={() => goToLine(index + 1)} title={`Skip this ${item}`}>
+              <SkipIcon size={16} /> Skip
             </button>
             <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
-              <PrevIcon size={16} /> Previous {item}
+              <PrevIcon size={16} /> Previous
             </button>
-            <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)" aria-description="Ends the session">
-              Open in builder
-            </Link>
             <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
               End session
             </button>
