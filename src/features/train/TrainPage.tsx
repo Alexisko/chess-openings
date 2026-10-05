@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Card as FsrsCard } from 'ts-fsrs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import {
+  ArrowRight,
   BookIcon,
   CheckIcon,
   CrossIcon,
@@ -33,7 +34,7 @@ import { loadNaming } from '../../lib/openings/naming'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, type Color } from '../../lib/chess/position'
 import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../../lib/explorer'
 import { openingTrail } from '../../lib/openings/names'
-import { builderUrl, trainUrl } from '../../lib/routes'
+import { builderUrl, planUrl, trainUrl } from '../../lib/routes'
 import { KnowledgeBar, KnowledgeChip } from '../../components/Knowledge'
 import { describeRecord, emptyCounts, knowledgeOf, weakness, withResult, type Knowledge, type MoveRecord } from '../../lib/srs/knowledge'
 import {
@@ -47,8 +48,9 @@ import {
   type TrainPool,
   type TrainUnit,
 } from '../../lib/srs/plan'
-import { isNew } from '../../lib/srs/scheduler'
+import { isDue, isNew } from '../../lib/srs/scheduler'
 import { LineRun } from '../../lib/srs/session'
+import { useFocusMode } from '../../lib/focusMode'
 import { playSound } from '../../lib/sound'
 import { MoveInsight } from '../board/MoveInsight'
 
@@ -83,6 +85,16 @@ interface ScopeRep {
   records: Map<string, MoveRecord>
   /** Positions in scope where you have a move to play (after the chapter's start). */
   keys: string[]
+}
+
+/** What a running session trains, for its summary. */
+interface SessionScope {
+  /** The repertoires in scope and their moves (positions where you play). */
+  reps: { id: string; keys: string[] }[]
+  /** The scope as train links take it. */
+  link: { repId: string | null; color: Color | null; chapter: string }
+  /** This session's own URL: opening it again builds a fresh session from what's left. */
+  here: string
 }
 
 /** Card and answer record per `${repId}|${positionKey}`, for feedback during the session. */
@@ -197,7 +209,8 @@ async function lineWeights(lines: Line[], hash: string): Promise<(l: Line) => nu
 }
 
 interface Feedback {
-  kind: 'correct' | 'wrong' | 'info'
+  /** 'shown': the move you asked to see with Show move. */
+  kind: 'correct' | 'wrong' | 'shown' | 'info'
   text: string
   /** The move just played correctly, to explain. */
   move?: { fen: string; uci: string; label: string }
@@ -208,7 +221,8 @@ interface Feedback {
 interface Stats {
   correct: number
   wrong: number
-  mistakes: string[]
+  /** Missed moves: the moves before, then the one you needed. */
+  mistakes: { before: string; answer: string }[]
   /** Moves graded this session (KnowMap keys), in order. */
   asked: string[]
 }
@@ -231,6 +245,8 @@ function readUnit(): TrainUnit {
 
 export function TrainPage() {
   const [params] = useSearchParams()
+  // Every visit starts a new session, even to the same URL ("Continue review" from a summary).
+  const visit = useLocation().key
   const rawMode = params.get('mode')
   // Old links to the weak-spot drill open Train.
   const mode: TrainMode = rawMode === 'drill' ? 'train' : ((rawMode as TrainMode) || 'review')
@@ -245,7 +261,7 @@ export function TrainPage() {
   // Train asks what to train first.
   const setup = mode === 'train' && !unit
   const [extraNew, setExtraNew] = useState(0)
-  const sessionKey = `${mode}-${repId}-${color}-${chapterParam}-${unit}-${size}-${extraNew}`
+  const sessionKey = `${mode}-${repId}-${color}-${chapterParam}-${unit}-${size}-${extraNew}-${visit}`
   const [loaded, setLoaded] = useState<{ key: string; scope: ScopeRep[]; queue: QueuedRun[]; chapter?: string }>()
 
   useEffect(() => {
@@ -275,6 +291,10 @@ export function TrainPage() {
         ? `${color === 'white' ? 'White' : 'Black'} repertoires`
         : 'All repertoires'
   const learned = scope.reduce((n, s) => n + s.keys.filter((k) => !isNew(s.cards.get(k)!)).length, 0)
+  const unlearned = scope.reduce((n, s) => n + s.keys.filter((k) => isNew(s.cards.get(k)!)).length, 0)
+  const scopeLink = { repId, color, chapter: chapterParam }
+  // Where to add more moves when everything prepared is learned.
+  const buildMore = repId ? builderUrl(repId, chapterParam ? chapterParam.split(',') : []) : color ? planUrl(color) : '/'
   if (setup && learned) return <TrainSetup scope={scope} scopeName={scopeName} params={params} />
   if (!queue.length)
     return (
@@ -286,31 +306,51 @@ export function TrainPage() {
           {MODE_TITLE[mode]} · {scopeName}
         </div>
         <h1 className="page-title mt-1 mb-2">
-          {mode === 'review' ? 'Nothing due' : mode === 'learn' ? 'Done for today' : 'Nothing learned yet'}
+          {mode === 'review'
+            ? 'Nothing due'
+            : mode === 'learn'
+              ? unlearned
+                ? 'Done for today'
+                : 'Every move learned'
+              : 'Nothing learned yet'}
         </h1>
         <p className="mb-6 text-sm text-muted">
           {mode === 'review'
             ? 'Nothing is due. Come back later, learn something new, or train what you know.'
             : mode === 'learn'
-              ? 'No new moves to learn within today’s limit.'
+              ? unlearned
+                ? `You've learned today's new moves. ${unlearned} more ${unlearned === 1 ? 'is' : 'are'} waiting for another day.`
+                : 'Nothing new is waiting. Add the next line to learn more, or train what you know.'
               : 'Training tests the moves you have learned. Learn a few first.'}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           {mode === 'review' && (
             <>
-              <Link className="btn-primary" to={trainUrl('learn', { repId, color, chapter: chapterParam })}>
+              <Link className="btn-primary" to={trainUrl('learn', scopeLink)}>
                 <BookIcon size={16} /> Learn new moves
               </Link>
-              <Link className="btn-ghost" to={trainUrl('train', { repId, color, chapter: chapterParam })}>
+              <Link className="btn-ghost" to={trainUrl('train', scopeLink)}>
                 <TargetIcon size={16} /> Train
               </Link>
             </>
           )}
-          {mode === 'learn' && (
-            <button className="btn-primary" onClick={() => setExtraNew((n) => n + 5)}>
-              Learn 5 more anyway
-            </button>
-          )}
+          {mode === 'learn' &&
+            (unlearned ? (
+              <button className="btn-primary" onClick={() => setExtraNew((n) => n + 5)}>
+                <BookIcon size={16} /> Learn {Math.min(5, unlearned)} more anyway
+              </button>
+            ) : (
+              <>
+                <Link className="btn-primary" to={buildMore}>
+                  {repId ? 'Add the next line' : 'See what to add next'} <ArrowRight size={16} />
+                </Link>
+                {learned > 0 && (
+                  <Link className="btn-ghost" to={trainUrl('train', scopeLink)}>
+                    <TargetIcon size={16} /> Train what you know
+                  </Link>
+                )}
+              </>
+            ))}
           {mode === 'train' && (
             <Link className="btn-primary" to={trainUrl('learn', { repId, color, chapter: chapterParam })}>
               <BookIcon size={16} /> Learn new moves
@@ -331,6 +371,11 @@ export function TrainPage() {
       know={knowMap(scope)}
       chapter={chapter}
       again={mode === 'train' ? trainUrl('train', { repId, color, chapter: chapterParam }) : undefined}
+      scope={{
+        reps: scope.map((s) => ({ id: s.rep.id, keys: s.keys })),
+        link: { repId, color, chapter: chapterParam },
+        here: `/train?${params}`,
+      }}
     />
   )
 }
@@ -376,14 +421,9 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
           <h1 className="page-title mt-0.5">What do you really know?</h1>
         </div>
       </div>
-      <p className="mt-4 text-sm leading-relaxed text-muted">
-        Any move you have learned can come up, due or not. Moves you missed recently or haven't been asked for a while come up
-        more often; a move you miss comes back a few questions later. Early right answers don't change your review schedule,
-        but they count towards how well you know each move.
-      </p>
       <div className="mt-5">
         <div className="eyebrow mb-2">Your moves here</div>
-        <KnowledgeBar counts={counts} />
+        <KnowledgeBar counts={counts} explain />
       </div>
       <div className="mt-6 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Train">
         {options.map((o) => (
@@ -420,6 +460,12 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
           Home
         </Link>
       </div>
+      {/* How it works, after the choice: the choice is what most visits are for. */}
+      <p className="mt-5 border-t border-line/70 pt-4 text-xs leading-relaxed text-muted">
+        Any move you have learned can come up, due or not. Moves you missed recently or haven't been asked for a while come up
+        more often; a move you miss comes back a few questions later. Early right answers don't change your review schedule,
+        but they count towards how well you know each move.
+      </p>
     </div>
   )
 }
@@ -451,12 +497,15 @@ function Session({
   know: initialKnow,
   chapter,
   again,
+  scope,
 }: {
   mode: TrainMode
   unit?: TrainUnit
   queue: QueuedRun[]
   know: KnowMap
   chapter?: string
+  /** What the session trains, for the summary's "still due" and "next" counts. */
+  scope: SessionScope
   /** Where to start another session like this one. */
   again?: string
 }) {
@@ -465,6 +514,8 @@ function Session({
   const [queue, setQueue] = useState(initialQueue)
   // Answer records, updated as you answer.
   const [know, setKnow] = useState(initialKnow)
+  // Ended by hand before the last step: the summary offers to carry on.
+  const [ended, setEnded] = useState(false)
   const [index, setIndex] = useState(0)
   // The furthest line reached: lines before it are being played again, as practice.
   const [furthest, setFurthest] = useState(0)
@@ -589,6 +640,9 @@ function Session({
     return () => clearTimeout(t)
   }, [run, finished, lastLine])
 
+  // On a phone the session takes the whole screen; the summary brings the app back.
+  useFocusMode(!!run)
+
   // What one step of the session is, for labels.
   const item = unit === 'moves' ? 'move' : 'line'
   if (!current || !run)
@@ -597,10 +651,12 @@ function Session({
         mode={mode}
         item={item}
         stats={stats}
-        // Ended early: only the steps you got to (the last one reached counts).
-        reached={Math.min(queue.length, furthest + 1)}
-        total={queue.length}
+        // Ended early: only the planned steps you got to (the last one reached counts).
+        reached={ended ? queue.slice(0, furthest + 1).filter((q) => !q.retry).length : undefined}
+        total={queue.filter((q) => !q.retry).length}
+        before={initialKnow}
         know={know}
+        scope={scope}
         again={again}
       />
     )
@@ -635,14 +691,15 @@ function Session({
       if (res.graded) {
         setStats((s) => ({ ...s, correct: s.correct + 1 }))
         record = noteAnswer(res.move.fromKey, true)
-        await recordAttempt(rep.id, res.move.fromKey, true, uci, mode)
       }
       const move = { fen: res.move.fromFen, uci: res.move.uci, label: formatMoves([res.move.san], start.moves.length + run.ply - 1) }
+      // The answer shows at once; the review log is written after.
       setFeedback(
         res.move.comment
           ? { kind: 'correct', text: `${res.move.san} — ${res.move.comment}`, move, record }
           : { kind: 'correct', text: `${res.move.san} ✓`, move, record },
       )
+      if (res.graded) await recordAttempt(rep.id, res.move.fromKey, true, uci, mode)
     } else {
       const exp = 'expected' in res ? res.expected : undefined
       let record: Feedback['record']
@@ -650,10 +707,9 @@ function Session({
         setStats((s) => ({
           ...s,
           wrong: s.wrong + 1,
-          mistakes: [...s.mistakes, formatMoves(path.sans.slice(0, live + 1))],
+          mistakes: [...s.mistakes, { before: formatMoves(path.sans.slice(0, live)), answer: formatMoves([exp.san], live) }],
         }))
         record = noteAnswer(exp.fromKey, false)
-        await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
         // In review and training, a missed move is asked once more a little later (not graded).
         if (retries) {
           const retry: QueuedRun = { rep, run: makeRun(current.run.line, [exp.fromKey], MOVE_LEAD_IN), continuesIn: [], retry: true }
@@ -663,175 +719,213 @@ function Session({
           })
         }
       }
-      // Not for "Show move", which is asked for.
-      if (uci !== '0000') playSound('wrong')
-      setFeedback({
-        kind: 'wrong',
-        text: `Not your repertoire move. Play ${exp?.san}.${retries && record ? ' It will come back in a moment.' : ''}`,
-        record,
-      })
+      // "Show move" was asked for: no wrong-move sound or shake, and its own words.
+      const shown = uci === '0000'
+      if (!shown) playSound('wrong')
+      const later = retries && record ? ' It comes back in a moment.' : ''
+      setFeedback(
+        shown
+          ? {
+              kind: 'shown',
+              text: `${exp?.san} is the move: play it to go on.${record ? ' Counts as a miss.' : ''}${later}`,
+              record,
+            }
+          : { kind: 'wrong', text: `Not your repertoire move. Play ${exp?.san}.${later}`, record },
+      )
       setBoardVersion((v) => v + 1)
+      if (res.kind === 'wrong' && res.graded && exp) await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
     }
     rerender()
   }
 
   const giveUp = () => onMove('0000')
-  const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
+  // Show move keeps its place under the board, disabled while there's nothing to show.
+  const canShow = run.awaitingUser && !run.demo && !run.mustRetry && !browsing
+  const endSession = () => {
+    setEnded(true)
+    setIndex(queue.length)
+  }
+  const flash =
+    feedback && (feedback.kind === 'correct' || feedback.kind === 'wrong') && fbId ? { kind: feedback.kind, id: fbId } : undefined
   const { startPly, endPly } = current.run
-  const progress = (index + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / queue.length
+  // Progress counts the planned steps only: a missed move asked again doesn't push the end away.
+  const planned = queue.length - queue.filter((q) => q.retry).length
+  const plannedBefore = queue.slice(0, index).filter((q) => !q.retry).length
+  const step = current.retry ? plannedBefore : plannedBefore + 1
+  const progress = current.retry
+    ? plannedBefore / planned
+    : (plannedBefore + (run.finished ? 1 : (run.ply - startPly) / Math.max(1, endPly - startPly))) / planned
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2.5">
-          <ColorDot color={rep.color} size={14} />
-          <span className="truncate font-display text-xl font-medium tracking-tight">
-            {rep.name}
-            {chapter && <span className="text-muted"> · {chapter}</span>}
-          </span>
-          <span className="chip ml-auto shrink-0 py-0.5">
-            <ModeIcon mode={mode} size={13} />
-            {MODE_TITLE[mode]}
-            {mode === 'learn' && <span className="text-brass">· {pass === 'demo' ? 'watch' : 'recall'}</span>}
-            {unit && <span className="text-brass">· {unit}</span>}
-          </span>
+    // The board is as large as fits above its buttons (at most 560px). Below lg, one column the board's width.
+    <div className="mx-auto flex max-w-[var(--board)] flex-col gap-3 [--board:min(560px,max(320px,calc(100dvh-15rem)))] lg:max-w-none">
+      <div className="flex items-center gap-2.5">
+        <ColorDot color={rep.color} size={14} />
+        <div className="min-w-0 font-display text-xl leading-tight font-medium tracking-tight">
+          <span className="block truncate sm:inline">{rep.name}</span>
+          {chapter && (
+            <span className="block truncate text-sm text-muted sm:inline sm:text-xl">
+              <span className="max-sm:hidden"> · </span>
+              {chapter}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-3 text-xs text-muted">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-brass to-maple transition-[width] duration-500 ease-out"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
-          <span className="tabular-nums">
-            {item} {index + 1} / {queue.length}
-            {practice && (
-              <span className="text-brass" title="Played again: not graded">
-                {' '}
-                · {current.retry ? 'second try' : 'replay'}, not graded
-              </span>
-            )}
-          </span>
+        <span className="chip ml-auto shrink-0 py-0.5" title={MODE_TITLE[mode]}>
+          <ModeIcon mode={mode} size={13} />
+          <span className="max-sm:sr-only">{MODE_TITLE[mode]}</span>
+          {mode === 'learn' && <span className="text-brass">· {pass === 'demo' ? 'watch' : 'recall'}</span>}
+          {unit && <span className="text-brass max-sm:hidden">· {unit}</span>}
+        </span>
+        <button
+          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink md:hidden"
+          onClick={endSession}
+          aria-label="End session"
+        >
+          <CrossIcon size={20} />
+        </button>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+          <div
+            className="h-full origin-left rounded-full bg-maple transition-transform duration-500 ease-out"
+            style={{ transform: `scaleX(${progress})` }}
+          />
         </div>
-        <Board
-          key={boardVersion}
-          fen={fen}
-          orientation={rep.color}
-          movable={run.awaitingUser && !browsing ? rep.color : 'none'}
-          lastMove={lastMove}
-          arrows={arrows}
-          onMove={onMove}
-          flash={flash}
-        />
-        <div className="grid grid-cols-4 gap-2" title="Look back at the moves so far · Keyboard: ← →">
-          <button className="btn-ghost" onClick={() => setView(0)} disabled={view <= 0} aria-label="Initial position">
-            <FirstIcon />
-          </button>
-          <button className="btn-ghost" onClick={() => setView(view - 1)} disabled={view <= 0} aria-label="Back">
-            <PrevIcon />
-          </button>
-          <button className="btn-ghost" onClick={() => setView(view + 1)} disabled={!browsing} aria-label="Forward">
-            <NextIcon />
-          </button>
-          <button
-            className={browsing ? 'btn-primary' : 'btn-ghost'}
-            onClick={() => setView(live)}
-            disabled={!browsing}
-            aria-label="Back to the current position"
-          >
-            <LastIcon />
-          </button>
-        </div>
+        <span className="tabular-nums">
+          {item} {step} / {planned}
+          {practice && (
+            <span className="text-brass" title="Answers here don't change your review schedule">
+              {' '}
+              · {current.retry ? 'second try' : 'practice'}, doesn't count
+            </span>
+          )}
+        </span>
       </div>
 
-      <div className="flex flex-col gap-4 md:pt-[4.25rem]">
-        {punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs && (
-          <div className="card flex animate-pop items-baseline gap-2 border-bad/40 px-4 py-3 text-sm">
-            <span className={`font-display text-lg font-semibold ${GLYPH_TONE[punish]}`}>{punish}</span>
-            <span>
-              {formatMoves([lastTheirs.san], start.moves.length + run.ply - 1)}
-              {punish} is {punish === '??' ? 'a blunder' : 'a mistake'}. Find the move that punishes it.
-            </span>
+      <div className="grid gap-3 lg:grid-cols-[var(--board)_minmax(0,1fr)] lg:gap-5">
+        <div className="flex flex-col gap-3">
+          <Board
+            key={boardVersion}
+            fen={fen}
+            orientation={rep.color}
+            movable={run.awaitingUser && !browsing ? rep.color : 'none'}
+            lastMove={lastMove}
+            arrows={arrows}
+            onMove={onMove}
+            flash={flash}
+          />
+          {/* Looking back through the line is what a session reaches for most: big buttons under the board. */}
+          <div className="grid grid-cols-4 gap-2" title="Look back at the moves so far · Keyboard: ← →">
+            <button className="btn-ghost min-h-12" onClick={() => setView(0)} disabled={view <= 0} aria-label="Initial position">
+              <FirstIcon size={20} />
+            </button>
+            <button className="btn-ghost min-h-12" onClick={() => setView(view - 1)} disabled={view <= 0} aria-label="Back">
+              <PrevIcon size={20} />
+            </button>
+            <button className="btn-ghost min-h-12" onClick={() => setView(view + 1)} disabled={!browsing} aria-label="Forward">
+              <NextIcon size={20} />
+            </button>
+            <button
+              className={`min-h-12 ${browsing ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setView(live)}
+              disabled={!browsing}
+              aria-label="Back to the current position"
+            >
+              <LastIcon size={20} />
+            </button>
           </div>
-        )}
-        <FeedbackCard
-          key={fbId || `${index}-${pass}`}
-          feedback={feedback}
-          awaiting={run.awaitingUser}
-          demo={run.demo}
-          autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
-        />
+        </div>
 
-        {explaining && (
-          <div className="card animate-pop px-4 py-3">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="eyebrow">What {explaining.label} does</span>
-              <button className="btn-primary ml-auto py-1 text-xs" onClick={() => setContinued(fbId)} autoFocus>
-                Continue
-              </button>
+        <div className="flex flex-col gap-3">
+          <FeedbackCard
+            key={fbId || `${index}-${pass}`}
+            feedback={feedback}
+            awaiting={run.awaitingUser}
+            demo={run.demo}
+            autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
+            onContinue={explaining ? () => setContinued(fbId) : undefined}
+            punish={
+              punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs
+                ? { glyph: punish, move: formatMoves([lastTheirs.san], start.moves.length + run.ply - 1) }
+                : undefined
+            }
+          />
+
+          {explaining && (
+            <div className="card animate-pop px-4 py-3">
+              <div className="eyebrow mb-2">What {explaining.label} does</div>
+              <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
             </div>
-            <MoveInsight key={fbId} fen={explaining.fen} uci={explaining.uci} />
-          </div>
-        )}
+          )}
 
-        <div className="card px-4 py-3">
-          <div className="mb-1.5 flex items-baseline gap-2">
-            <span className="eyebrow">Line so far</span>
+          <div className="card px-4 py-3">
+            <div className="mb-1.5 flex items-baseline gap-2">
+              <span className="eyebrow">Line so far</span>
+              <Link
+                className="-my-1 ml-auto flex items-center gap-1 py-1 text-xs font-medium text-muted hover:text-brass"
+                to={builderUrl(rep.id, path.ucis.slice(0, view))}
+                title="Open this position in the builder (ends the session)"
+                aria-description="Ends the session"
+              >
+                Open in builder <ArrowRight size={13} />
+              </Link>
+            </div>
             {browsing && (
-              <button className="ml-auto text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
+              <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
                 Looking back · return to the current position
               </button>
             )}
+            <OpeningTrail trail={trail} className="mb-1" />
+            <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
+            {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
           </div>
-          <OpeningTrail trail={trail} className="mb-1" />
-          <MoveList sans={path.sans.slice(0, live)} view={view} onJump={setView} />
-          {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          {run.awaitingUser && !run.demo && !run.mustRetry && !browsing && (
-            <button className="btn-ghost" onClick={giveUp} title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}>
+          {/* One row whose buttons stay in place (disabled rather than removed), so it never reflows. */}
+          <div className="flex gap-2 lg:mt-auto">
+            <button
+              className="btn-ghost"
+              onClick={giveUp}
+              disabled={!canShow}
+              aria-description={practice ? "Practice: doesn't count" : 'Counts as a miss'}
+            >
               <EyeIcon size={16} /> Show move
             </button>
-          )}
-          <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
-            <PrevIcon size={16} /> Previous {item}
-          </button>
-          <button className="btn-ghost" onClick={() => goToLine(index + 1)}>
-            <SkipIcon size={16} /> Skip {item}
-          </button>
-          <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
-            Open in builder
-          </Link>
-          <button className="btn-ghost ml-auto" onClick={() => setIndex(queue.length)}>
-            End session
-          </button>
-        </div>
-        <div className="flex gap-4 text-xs text-muted">
-          <span className="flex items-center gap-1.5">
-            <CheckIcon size={14} className="text-accent" />
-            <span className="font-semibold text-ink tabular-nums">{stats.correct}</span> correct
-          </span>
-          <span className="flex items-center gap-1.5">
-            <CrossIcon size={14} className="text-bad" />
-            <span className="font-semibold text-ink tabular-nums">{stats.wrong}</span> mistake{stats.wrong === 1 ? '' : 's'}
-          </span>
-          <span className="ml-auto" title="Pause after each correct move to show what it threatens and does">
-            <Toggle
-              label="Explain moves"
-              checked={explain}
-              onChange={(on) => {
-                setExplain(on)
-                // Turning it on later shouldn't open an explanation for a move already past.
-                setContinued(fbId)
-                try {
-                  localStorage.setItem('explainMoves', on ? 'on' : 'off')
-                } catch {
-                  // Preference is optional.
-                }
-              }}
-            />
-          </span>
+            <button className="btn-ghost" onClick={() => goToLine(index + 1)} title={`Skip this ${item}`}>
+              <SkipIcon size={16} /> Skip
+            </button>
+            <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
+              <PrevIcon size={16} /> Previous
+            </button>
+            <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
+              End session
+            </button>
+          </div>
+          <div className="flex gap-4 text-xs text-muted">
+            <span className="flex items-center gap-1.5">
+              <CheckIcon size={14} className="text-accent" />
+              <span className="font-semibold text-ink tabular-nums">{stats.correct}</span> correct
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CrossIcon size={14} className="text-bad" />
+              <span className="font-semibold text-ink tabular-nums">{stats.wrong}</span> mistake{stats.wrong === 1 ? '' : 's'}
+            </span>
+            <span className="ml-auto" title="Pause after each correct move to show what it threatens and does">
+              <Toggle
+                label="Explain moves"
+                checked={explain}
+                onChange={(on) => {
+                  setExplain(on)
+                  // Turning it on later shouldn't open an explanation for a move already past.
+                  setContinued(fbId)
+                  try {
+                    localStorage.setItem('explainMoves', on ? 'on' : 'off')
+                  } catch {
+                    // Preference is optional.
+                  }
+                }}
+              />
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -854,7 +948,7 @@ function usePunish(move: RepMove | undefined): '?' | '??' | undefined {
 
 /** The moves so far, numbered; click one to look at the position after it. */
 function MoveList({ sans, view, onJump }: { sans: string[]; view: number; onJump: (ply: number) => void }) {
-  if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-faint">Starting position</p>
+  if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-muted">Starting position</p>
   return (
     <p className="font-display text-[17px] leading-relaxed">
       {sans.map((san, i) => (
@@ -883,12 +977,18 @@ function FeedbackCard({
   awaiting,
   demo,
   autoMine,
+  punish,
+  onContinue,
 }: {
   feedback?: Feedback
   awaiting: boolean
   demo: boolean
   /** The next move is one of the owner's mastered moves, played automatically. */
   autoMine: boolean
+  /** The opponent's last move is a mistake to punish. */
+  punish?: { glyph: '?' | '??'; move: string }
+  /** The line is paused on an explained move: Continue goes on (Enter too, as it takes focus). */
+  onContinue?: () => void
 }) {
   const kind = feedback?.kind
   const tone =
@@ -896,7 +996,7 @@ function FeedbackCard({
       ? 'border-accent/50 bg-accent/8'
       : kind === 'wrong'
         ? 'animate-shake border-bad/60 bg-bad/10'
-        : kind === 'info'
+        : kind === 'info' || kind === 'shown'
           ? 'border-brass/40 bg-brass/8'
           : ''
   const icon =
@@ -904,6 +1004,8 @@ function FeedbackCard({
       <CheckIcon size={20} />
     ) : kind === 'wrong' ? (
       <CrossIcon size={20} />
+    ) : kind === 'shown' ? (
+      <EyeIcon size={20} />
     ) : kind === 'info' ? (
       demo ? <EyeIcon size={20} /> : <BookIcon size={20} />
     ) : (
@@ -914,13 +1016,22 @@ function FeedbackCard({
       ? 'bg-accent/20 text-accent'
       : kind === 'wrong'
         ? 'bg-bad/20 text-bad'
-        : kind === 'info'
+        : kind === 'info' || kind === 'shown'
           ? 'bg-brass/20 text-brass'
           : 'bg-surface-3'
   return (
     <div className={`card flex min-h-20 animate-pop items-center gap-3.5 px-4 py-3.5 ${tone}`} aria-live="polite">
       <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${iconCls}`}>{icon}</span>
       <div className="min-w-0">
+        {punish && (
+          <p className="mb-1 text-sm">
+            <span className={`font-semibold ${GLYPH_TONE[punish.glyph]}`}>
+              {punish.move}
+              {punish.glyph}
+            </span>{' '}
+            is {punish.glyph === '??' ? 'a blunder' : 'a mistake'}. Find the move that punishes it.
+          </p>
+        )}
         <p className="text-[15px] leading-snug">{feedback?.text ?? (awaiting ? 'Your move.' : autoMine ? 'Playing known moves…' : 'Watch the reply…')}</p>
         {feedback?.record && (
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
@@ -929,9 +1040,20 @@ function FeedbackCard({
           </p>
         )}
       </div>
+      {onContinue && (
+        <button className="btn-primary ml-auto min-h-11 shrink-0 px-5" onClick={onContinue} autoFocus>
+          Continue
+        </button>
+      )}
     </div>
   )
 }
+
+/** Levels from weakest to strongest, to tell whether a move went up or down. */
+const LEVEL_RANK: Record<Knowledge, number> = { new: 0, shaky: 1, learning: 2, solid: 3, mastered: 4 }
+
+/** Mistakes listed before the rest fold away. */
+const MISTAKES_SHOWN = 5
 
 function Summary({
   mode,
@@ -939,81 +1061,169 @@ function Summary({
   item,
   reached,
   total,
+  before,
   know,
+  scope,
   again,
 }: {
   mode: TrainMode
   stats: Stats
   /** What one step of the session is: a line, or a single move in Train › Moves. */
   item: 'move' | 'line'
-  /** Steps you got to before the session ended. */
-  reached: number
+  /** Planned steps reached when the session was ended early; undefined when it ran to the end. */
+  reached?: number
+  /** Planned steps in the session (second tries not counted). */
   total: number
+  /** Answer records when the session started. */
+  before: KnowMap
   know: KnowMap
+  scope: SessionScope
   again?: string
 }) {
   const attempts = stats.correct + stats.wrong
   const accuracy = attempts ? stats.correct / attempts : null
+  const paused = reached !== undefined && reached < total
+  const [allMistakes, setAllMistakes] = useState(false)
   // Not when the session was ended before playing anything. The timeout skips StrictMode's double run.
   useEffect(() => {
     if (!attempts) return
     const t = setTimeout(() => playSound('session-complete'))
     return () => clearTimeout(t)
   }, [attempts])
-  // The moves asked, with their cards as the session left them.
-  const cards = useLiveQuery(
-    () => db.cards.where('[repertoireId+positionKey]').anyOf(stats.asked.map((k) => k.split('|') as [string, string])).toArray(),
-    [stats.asked],
-  )
-  const counts = useMemo(() => {
+  // Every card in scope as the session left it: the moves asked, and what's left to do.
+  const cards = useLiveQuery(async () => {
+    const rows = await db.cards.where('repertoireId').anyOf(scope.reps.map((r) => r.id)).toArray()
+    const inScope = new Map(scope.reps.map((r) => [r.id, new Set(r.keys)]))
+    return rows.filter((c) => inScope.get(c.repertoireId)?.has(c.positionKey))
+  }, [scope])
+  const view = useMemo(() => {
     if (!cards) return undefined
     const now = new Date()
-    const c = emptyCounts()
-    for (const card of cards) c[knowledgeOf(card.fsrs, know.get(knowKey(card.repertoireId, card.positionKey))?.record, now)]++
-    return c
-  }, [cards, know])
+    const tomorrow = new Date(now)
+    tomorrow.setHours(24, 0, 0, 0)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const asked = new Set(stats.asked)
+    const counts = emptyCounts()
+    let up = 0
+    let down = 0
+    for (const card of cards) {
+      const k = knowKey(card.repertoireId, card.positionKey)
+      if (!asked.has(k)) continue
+      const after = knowledgeOf(card.fsrs, know.get(k)?.record, now)
+      counts[after]++
+      const was = before.get(k)
+      if (!was) continue
+      const diff = LEVEL_RANK[after] - LEVEL_RANK[knowledgeOf(was.card, was.record, now)]
+      if (diff > 0) up++
+      else if (diff < 0) down++
+    }
+    return {
+      counts,
+      up,
+      down,
+      due: cards.filter((c) => isDue(c.fsrs, now)).length,
+      dueTomorrow: cards.filter((c) => !isNew(c.fsrs) && !isDue(c.fsrs, now) && new Date(c.fsrs.due) < tomorrow).length,
+      fresh: cards.filter((c) => isNew(c.fsrs)).length,
+    }
+  }, [cards, stats.asked, before, know])
+
+  const steps = `${paused ? `${reached} of ${total}` : total} ${item}${total === 1 ? '' : 's'}`
+  const title = paused
+    ? 'Session paused'
+    : mode === 'review' && view && !view.due
+      ? 'All caught up'
+      : mode === 'learn'
+        ? 'New moves learned'
+        : 'Session complete'
+  // What to do next, in one sentence.
+  const next = !view
+    ? undefined
+    : paused
+      ? mode === 'review' && view.due
+        ? `${view.due} move${view.due === 1 ? ' is' : 's are'} still due. Carry on where you left off.`
+        : 'Carry on where you left off, or come back later.'
+      : mode === 'review'
+        ? view.due
+          ? `${view.due} more move${view.due === 1 ? ' is' : 's are'} due now.`
+          : view.dueTomorrow
+            ? `${view.dueTomorrow} move${view.dueTomorrow === 1 ? '' : 's'} due tomorrow.`
+            : 'Nothing more is due tomorrow.'
+        : mode === 'learn'
+          ? 'They come back for review tomorrow.'
+          : undefined
+  const primary = paused
+    ? { to: scope.here, label: mode === 'review' ? 'Continue review' : 'Continue' }
+    : mode === 'review' && view?.due
+      ? { to: trainUrl('review', scope.link), label: 'Review the rest' }
+      : { to: '/', label: 'Home' }
+  const secondary =
+    mode === 'train'
+      ? { to: again ?? trainUrl('train', scope.link), label: 'Train again', icon: <TargetIcon size={16} /> }
+      : view?.fresh && mode === 'review'
+        ? { to: trainUrl('learn', scope.link), label: 'Learn new moves', icon: <BookIcon size={16} /> }
+        : { to: trainUrl('train', scope.link), label: 'Train', icon: <TargetIcon size={16} /> }
+  const mistakes = allMistakes ? stats.mistakes : stats.mistakes.slice(0, MISTAKES_SHOWN)
+
   return (
-    <div className="card mx-auto mt-6 max-w-md animate-rise p-6 md:p-8">
-      <div className="flex items-center gap-5">
-        <ScoreRing value={accuracy} size={88} stroke={6} />
-        <div>
+    <div className="card mx-auto mt-2 max-w-md animate-rise p-6 md:mt-6 md:p-8">
+      <div className="flex items-center gap-5 max-sm:flex-col max-sm:items-start max-sm:gap-4">
+        {accuracy !== null && <ScoreRing value={accuracy} size={88} stroke={6} title="Right first time" />}
+        <div className="min-w-0">
           <div className="eyebrow">{MODE_TITLE[mode]}</div>
-          <h1 className="page-title mt-1">Session complete</h1>
+          <h1 className="page-title mt-1">{title}</h1>
           <p className="mt-1 text-sm text-muted">
-            {reached < total ? `${reached} of ${total}` : total} {item}
-            {total === 1 ? '' : 's'} · {stats.correct} correct · {stats.wrong} mistake{stats.wrong === 1 ? '' : 's'}
+            {steps} · {stats.correct} correct · {stats.wrong} mistake{stats.wrong === 1 ? '' : 's'}
           </p>
         </div>
       </div>
-      {counts && stats.asked.length > 0 && (
-        <div className="mt-6">
-          <div className="eyebrow mb-2">
-            The {stats.asked.length} move{stats.asked.length === 1 ? '' : 's'} you were asked, now
+      {next && <p className="mt-5 font-display text-lg leading-snug">{next}</p>}
+      <div className="mt-5 flex gap-2">
+        <Link className="btn-primary flex-1 py-2.5" to={primary.to}>
+          {primary.label}
+        </Link>
+        <Link className="btn-ghost flex-1" to={secondary.to}>
+          {secondary.icon} {secondary.label}
+        </Link>
+      </div>
+      {view && stats.asked.length > 0 && (
+        <div className="mt-7 border-t border-line/70 pt-5">
+          <div className="mb-2 flex items-baseline gap-3">
+            <span className="eyebrow">
+              The {stats.asked.length} move{stats.asked.length === 1 ? '' : 's'} you were asked
+            </span>
+            {(view.up > 0 || view.down > 0) && (
+              <span className="ml-auto text-xs whitespace-nowrap text-muted tabular-nums">
+                {view.up > 0 && <span className="text-accent">↑ {view.up} up</span>}
+                {view.up > 0 && view.down > 0 && ' · '}
+                {view.down > 0 && <span className="text-bad">↓ {view.down} down</span>}
+              </span>
+            )}
           </div>
-          <KnowledgeBar counts={counts} hideNew />
+          <KnowledgeBar counts={view.counts} hideNew explain />
         </div>
       )}
       {stats.mistakes.length > 0 && (
         <div className="mt-6">
           <div className="eyebrow mb-2">Mistakes</div>
           <ul className="flex flex-col gap-1.5">
-            {stats.mistakes.map((m, i) => (
+            {mistakes.map((m, i) => (
               <li key={i} className="flex items-start gap-2 rounded-lg bg-surface-2/70 px-3 py-2 text-sm">
-                <CrossIcon size={14} className="mt-0.5 shrink-0 text-bad" />
-                <span className="font-display">{m}</span>
+                <CrossIcon size={14} className="mt-1 shrink-0 text-bad" />
+                <span className="font-display">
+                  {m.before && <span className="text-muted">{m.before} </span>}
+                  <span className="font-semibold">{m.answer}</span>
+                  <span className="ml-1.5 font-sans text-xs text-muted">was the move</span>
+                </span>
               </li>
             ))}
           </ul>
+          {stats.mistakes.length > MISTAKES_SHOWN && (
+            <button className="mt-2 text-xs text-muted hover:text-brass" onClick={() => setAllMistakes((v) => !v)}>
+              {allMistakes ? 'Show fewer' : `Show all ${stats.mistakes.length}`}
+            </button>
+          )}
         </div>
       )}
-      <div className="mt-6 flex gap-2">
-        <Link className="btn-primary flex-1" to="/">
-          Home
-        </Link>
-        <Link className="btn-ghost flex-1" to={again ?? trainUrl('train')}>
-          <TargetIcon size={16} /> {again ? 'Train again' : 'Train'}
-        </Link>
-      </div>
     </div>
   )
 }

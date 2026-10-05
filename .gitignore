@@ -32,3 +32,9 @@ worker/worker-configuration.d.ts
 
 # Claude desktop app dev server configs (per machine)
 .claude/launch.json
+
+# Impeccable design skill (installed at user level): keep all its
+# context files, reports and runtime state out of the repo
+.impeccable/
+/PRODUCT.md
+/DESIGN.md

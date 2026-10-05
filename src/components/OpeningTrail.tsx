@@ -16,7 +16,7 @@ export function OpeningTrail({ trail, compact = false, className = '' }: { trail
       <span className={`flex min-w-0 items-baseline gap-1 italic ${className}`} title={title}>
         {previous && (
           <>
-            <span className="min-w-0 truncate text-faint">{previous.opening.name}</span>
+            <span className="min-w-0 truncate text-muted">{previous.opening.name}</span>
             <span className="shrink-0 text-faint not-italic">→</span>
           </>
         )}
@@ -27,7 +27,7 @@ export function OpeningTrail({ trail, compact = false, className = '' }: { trail
   return (
     <div className={`flex min-w-0 items-baseline gap-2 ${className}`} title={title}>
       {current.opening.eco && (
-        <span className="shrink-0 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-brass">
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-brass">
           {current.opening.eco}
         </span>
       )}

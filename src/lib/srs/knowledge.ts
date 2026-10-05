@@ -104,11 +104,11 @@ export function weakness(card: FsrsCard, rec: MoveRecord | undefined, now: Date)
 export function describeRecord(rec: MoveRecord | undefined): string {
   if (!rec?.attempts) return 'never asked yet'
   const parts: string[] = []
+  const misses = rec.recent.filter((ok) => !ok).length
   if (rec.streak >= 2) parts.push(`${rec.streak} in a row`)
-  else if (rec.recent[0] === false) {
-    const misses = rec.recent.filter((ok) => !ok).length
-    parts.push(misses > 1 ? `missed ${misses} of the last ${rec.recent.length}` : 'missed last time')
-  }
+  else if (rec.recent[0] === false) parts.push(misses > 1 ? `missed ${misses} of the last ${rec.recent.length}` : 'missed last time')
+  // Right this time after recent misses: say so, or "Shaky" after a right answer reads as a contradiction.
+  else if (misses) parts.push(`right this time, missed ${misses} of the last ${rec.recent.length}`)
   parts.push(`${rec.correct}/${rec.attempts} right`)
   return parts.join(' · ')
 }

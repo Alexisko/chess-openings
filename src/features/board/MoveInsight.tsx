@@ -49,6 +49,16 @@ export function MoveInsight({
   )
 }
 
+/** An engine gain in centipawns, in words: a phone has no tooltip to explain "+1.9". */
+function gainInWords(cp: number): string {
+  const pawns = cp / 100
+  if (pawns < 0.7) return 'a small edge'
+  if (pawns < 1.5) return 'about a pawn'
+  if (pawns < 2.5) return 'about two pawns'
+  if (pawns < 4.5) return 'about a piece'
+  return 'more than a piece'
+}
+
 function ThreatLine({ threat, onArrow }: { threat: Threat | null | undefined; onArrow?: (arrow: Arrow | null) => void }) {
   if (threat === undefined) return <p className="animate-pulse text-muted">Looking for threats…</p>
   // The move gave check (or left no legal move to try): the check is the threat.
@@ -79,7 +89,7 @@ function ThreatLine({ threat, onArrow }: { threat: Threat | null | undefined; on
             ) : (
               threat.gain !== null && (
                 <span className="ml-1.5 text-xs text-muted tabular-nums" title="What a free move would gain, in pawns">
-                  +{(threat.gain / 100).toFixed(1)}
+                  +{(threat.gain / 100).toFixed(1)} · {gainInWords(threat.gain)}
                 </span>
               )
             )}
@@ -90,7 +100,7 @@ function ThreatLine({ threat, onArrow }: { threat: Threat | null | undefined; on
           </>
         )}
       </p>
-      {rest && <p className="text-xs text-faint">then {rest}</p>}
+      {rest && <p className="text-xs text-muted">then {rest}</p>}
     </div>
   )
 }
