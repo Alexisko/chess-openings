@@ -281,7 +281,7 @@ describe('game tree', () => {
       url: `/rep/${rep.id}/build?m=${uci('e4 e5 Nc3 Nf6 f4 d5').join(',')}`,
     })
     expect(target('e4')).toMatchObject({ kind: 'plan', url: `/plan/white?at=${uci('e4').join(',')}` })
-    expect(target('e4 c5')).toMatchObject({ kind: 'new', url: `/?newColor=white&newStart=${encodeURIComponent('1. e4 c5')}` })
+    expect(target('e4 c5')).toMatchObject({ kind: 'new', url: `/repertoire?newColor=white&newStart=${encodeURIComponent('1. e4 c5')}` })
   })
 })
 

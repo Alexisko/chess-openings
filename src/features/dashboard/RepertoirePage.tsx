@@ -24,7 +24,7 @@ import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapters'
 import { renameChapter } from '../../lib/openings/renameChapter'
 import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
-import { builderUrl, planUrl, trainUrl } from '../../lib/routes'
+import { builderUrl, planUrl, repertoireUrl, trainUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 import { describeRecord, emptyCounts, knowledgeOf, weakness } from '../../lib/srs/knowledge'
@@ -210,7 +210,7 @@ export function RepertoirePage() {
             })
             if (!ok) return
             await deleteRepertoire(rep.id)
-            navigate('/')
+            navigate(repertoireUrl(rep.color))
           }}
         >
           Delete repertoire
