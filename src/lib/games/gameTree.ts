@@ -237,5 +237,5 @@ export function builderTarget(path: string[], sans: string[], color: Color, reps
   }
   if (reps.some((r) => r.rep.color === color && startsWith(r.start.moves, path)))
     return { kind: 'plan', url: planUrl(color, path) }
-  return { kind: 'new', url: `/?newColor=${color}&newStart=${encodeURIComponent(formatMoves(sans))}` }
+  return { kind: 'new', url: `/repertoire?newColor=${color}&newStart=${encodeURIComponent(formatMoves(sans))}` }
 }

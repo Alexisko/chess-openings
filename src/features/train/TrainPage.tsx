@@ -357,7 +357,7 @@ export function TrainPage() {
             </Link>
           )}
           <Link className="btn-ghost" to="/">
-            Home
+            Back
           </Link>
         </div>
       </div>
@@ -457,7 +457,7 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
           <TargetIcon size={16} /> Start
         </Link>
         <Link className="btn-ghost" to="/">
-          Home
+          Back
         </Link>
       </div>
       {/* How it works, after the choice: the choice is what most visits are for. */}
@@ -1155,7 +1155,7 @@ function Summary({
     ? { to: scope.here, label: mode === 'review' ? 'Continue review' : 'Continue' }
     : mode === 'review' && view?.due
       ? { to: trainUrl('review', scope.link), label: 'Review the rest' }
-      : { to: '/', label: 'Home' }
+      : { to: '/', label: 'Done' }
   const secondary =
     mode === 'train'
       ? { to: again ?? trainUrl('train', scope.link), label: 'Train again', icon: <TargetIcon size={16} /> }

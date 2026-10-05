@@ -54,6 +54,19 @@ export function GamesIcon(p: IconProps) {
   )
 }
 
+/** A line branching into two: a repertoire's tree of moves. */
+export function RepertoireIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="6" cy="19" r="2" />
+      <circle cx="6" cy="5" r="2" />
+      <circle cx="18" cy="8" r="2" />
+      <path d="M6 7v10" />
+      <path d="M6 15c0-4 3-5.5 10.2-6.4" />
+    </Svg>
+  )
+}
+
 export function SettingsIcon(p: IconProps) {
   return (
     <Svg {...p}>

@@ -7,6 +7,11 @@ export function builderUrl(repId: string, uci: string[]) {
   return `/rep/${repId}/build${uci.length ? `?m=${uci.join(',')}` : ''}`
 }
 
+/** The repertoire tab on one colour. */
+export function repertoireUrl(color: 'white' | 'black') {
+  return `/repertoire?color=${color}`
+}
+
 export function planUrl(color: 'white' | 'black', path?: string[]) {
   return `/plan/${color}${path?.length ? `?at=${path.join(',')}` : ''}`
 }

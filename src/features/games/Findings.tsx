@@ -295,7 +295,7 @@ function FindingRow({ f, ctx }: { f: Finding; ctx: RowContext }) {
     action = (
       <Link
         className="btn-ghost shrink-0 px-2.5 py-1 text-xs"
-        to={`/?newColor=${f.color}&newStart=${encodeURIComponent(formatMoves([...f.sans, top.san]))}`}
+        to={`/repertoire?newColor=${f.color}&newStart=${encodeURIComponent(formatMoves([...f.sans, top.san]))}`}
       >
         New repertoire
       </Link>
