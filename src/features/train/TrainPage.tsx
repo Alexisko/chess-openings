@@ -209,7 +209,8 @@ async function lineWeights(lines: Line[], hash: string): Promise<(l: Line) => nu
 }
 
 interface Feedback {
-  kind: 'correct' | 'wrong' | 'info'
+  /** 'shown': the move you asked to see with Show move. */
+  kind: 'correct' | 'wrong' | 'shown' | 'info'
   text: string
   /** The move just played correctly, to explain. */
   move?: { fen: string; uci: string; label: string }
@@ -422,7 +423,7 @@ function TrainSetup({ scope, scopeName, params }: { scope: ScopeRep[]; scopeName
       </div>
       <div className="mt-5">
         <div className="eyebrow mb-2">Your moves here</div>
-        <KnowledgeBar counts={counts} />
+        <KnowledgeBar counts={counts} explain />
       </div>
       <div className="mt-6 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Train">
         {options.map((o) => (
@@ -690,14 +691,15 @@ function Session({
       if (res.graded) {
         setStats((s) => ({ ...s, correct: s.correct + 1 }))
         record = noteAnswer(res.move.fromKey, true)
-        await recordAttempt(rep.id, res.move.fromKey, true, uci, mode)
       }
       const move = { fen: res.move.fromFen, uci: res.move.uci, label: formatMoves([res.move.san], start.moves.length + run.ply - 1) }
+      // The answer shows at once; the review log is written after.
       setFeedback(
         res.move.comment
           ? { kind: 'correct', text: `${res.move.san} — ${res.move.comment}`, move, record }
           : { kind: 'correct', text: `${res.move.san} ✓`, move, record },
       )
+      if (res.graded) await recordAttempt(rep.id, res.move.fromKey, true, uci, mode)
     } else {
       const exp = 'expected' in res ? res.expected : undefined
       let record: Feedback['record']
@@ -708,7 +710,6 @@ function Session({
           mistakes: [...s.mistakes, { before: formatMoves(path.sans.slice(0, live)), answer: formatMoves([exp.san], live) }],
         }))
         record = noteAnswer(exp.fromKey, false)
-        await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
         // In review and training, a missed move is asked once more a little later (not graded).
         if (retries) {
           const retry: QueuedRun = { rep, run: makeRun(current.run.line, [exp.fromKey], MOVE_LEAD_IN), continuesIn: [], retry: true }
@@ -718,14 +719,21 @@ function Session({
           })
         }
       }
-      // Not for "Show move", which is asked for.
-      if (uci !== '0000') playSound('wrong')
-      setFeedback({
-        kind: 'wrong',
-        text: `Not your repertoire move. Play ${exp?.san}.${retries && record ? ' It will come back in a moment.' : ''}`,
-        record,
-      })
+      // "Show move" was asked for: no wrong-move sound or shake, and its own words.
+      const shown = uci === '0000'
+      if (!shown) playSound('wrong')
+      const later = retries && record ? ' It comes back in a moment.' : ''
+      setFeedback(
+        shown
+          ? {
+              kind: 'shown',
+              text: `${exp?.san} is the move: play it to go on.${record ? ' Counts as a miss.' : ''}${later}`,
+              record,
+            }
+          : { kind: 'wrong', text: `Not your repertoire move. Play ${exp?.san}.${later}`, record },
+      )
       setBoardVersion((v) => v + 1)
+      if (res.kind === 'wrong' && res.graded && exp) await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
     }
     rerender()
   }
@@ -737,7 +745,8 @@ function Session({
     setEnded(true)
     setIndex(queue.length)
   }
-  const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
+  const flash =
+    feedback && (feedback.kind === 'correct' || feedback.kind === 'wrong') && fbId ? { kind: feedback.kind, id: fbId } : undefined
   const { startPly, endPly } = current.run
   // Progress counts the planned steps only: a missed move asked again doesn't push the end away.
   const planned = queue.length - queue.filter((q) => q.retry).length
@@ -785,9 +794,9 @@ function Session({
         <span className="tabular-nums">
           {item} {step} / {planned}
           {practice && (
-            <span className="text-brass" title="Played again: not graded">
+            <span className="text-brass" title="Answers here don't change your review schedule">
               {' '}
-              · {current.retry ? 'second try' : 'replay'}, not graded
+              · {current.retry ? 'second try' : 'practice'}, doesn't count
             </span>
           )}
         </span>
@@ -816,7 +825,7 @@ function Session({
                   className="btn-ghost min-h-12 text-[15px]"
                   onClick={giveUp}
                   disabled={!canShow}
-                  title={practice ? 'Replays aren’t graded' : 'Counts as a mistake'}
+                  aria-description={practice ? "Practice: doesn't count" : 'Counts as a miss'}
                 >
                   <EyeIcon size={18} /> Show move
                 </button>
@@ -881,7 +890,7 @@ function Session({
             <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
               <PrevIcon size={16} /> Previous {item}
             </button>
-            <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)">
+            <Link className="btn-ghost" to={builderUrl(rep.id, path.ucis.slice(0, view))} title="Open this position in the builder (ends the session)" aria-description="Ends the session">
               Open in builder
             </Link>
             <button className="btn-ghost ml-auto max-md:hidden" onClick={endSession}>
@@ -1010,7 +1019,7 @@ function FeedbackCard({
       ? 'border-accent/50 bg-accent/8'
       : kind === 'wrong'
         ? 'animate-shake border-bad/60 bg-bad/10'
-        : kind === 'info'
+        : kind === 'info' || kind === 'shown'
           ? 'border-brass/40 bg-brass/8'
           : ''
   const icon =
@@ -1018,6 +1027,8 @@ function FeedbackCard({
       <CheckIcon size={20} />
     ) : kind === 'wrong' ? (
       <CrossIcon size={20} />
+    ) : kind === 'shown' ? (
+      <EyeIcon size={20} />
     ) : kind === 'info' ? (
       demo ? <EyeIcon size={20} /> : <BookIcon size={20} />
     ) : (
@@ -1028,7 +1039,7 @@ function FeedbackCard({
       ? 'bg-accent/20 text-accent'
       : kind === 'wrong'
         ? 'bg-bad/20 text-bad'
-        : kind === 'info'
+        : kind === 'info' || kind === 'shown'
           ? 'bg-brass/20 text-brass'
           : 'bg-surface-3'
   return (
@@ -1206,7 +1217,7 @@ function Summary({
               </span>
             )}
           </div>
-          <KnowledgeBar counts={view.counts} hideNew />
+          <KnowledgeBar counts={view.counts} hideNew explain />
         </div>
       )}
       {stats.mistakes.length > 0 && (

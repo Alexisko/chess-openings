@@ -64,5 +64,6 @@ describe('move knowledge', () => {
     expect(describeRecord(undefined)).toBe('never asked yet')
     expect(describeRecord(answers(false, true, true, true))).toBe('3 in a row · 3/4 right')
     expect(describeRecord(answers(true, false))).toBe('missed last time · 1/2 right')
+    expect(describeRecord(answers(false, false, true))).toBe('right this time, missed 2 of the last 3 · 1/3 right')
   })
 })
