@@ -39,7 +39,7 @@ export function EvalBar({ line }: { line?: PvLine }) {
   const white = 1 / (1 + Math.exp(-0.004 * cp))
   return (
     <div className="relative h-3.5 w-full overflow-hidden rounded-[5px] bg-[#0f0a06] shadow-[0_0_0_1px_rgb(0_0_0/0.35)]">
-      <div className="absolute inset-y-0 left-0 bg-ivory transition-[width] duration-500" style={{ width: `${white * 100}%` }} />
+      <div className="absolute inset-0 origin-left bg-ivory transition-transform duration-500" style={{ transform: `scaleX(${white})` }} />
       <div className="absolute inset-y-0 left-1/2 w-px bg-brass/60" />
       {line && (
         <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold tabular-nums mix-blend-difference">
@@ -82,7 +82,8 @@ export function ColorDot({ color, size = 12 }: { color: 'white' | 'black'; size?
           : 'bg-[radial-gradient(circle_at_35%_30%,#4a3a2e,#0c0806_70%)] shadow-[0_0_0_1px_rgb(217_170_85/0.45),inset_0_1px_1px_rgb(255_255_255/0.12)]'
       }`}
       style={{ width: size, height: size }}
-      title={color}
+      title={color === 'white' ? 'White' : 'Black'}
+      aria-hidden
     />
   )
 }

@@ -79,7 +79,7 @@ export function useLineScore(node: CoveredNode, color: Color, settings: Settings
       remembered: preparedness({ ...prep.inputs, depth }, node.key).score,
     }
   }, [data, prep, node.path, node.key, color, settings.prepDepth])
-  return { data, score }
+  return { data, prep, score }
 }
 
 /** Preparedness per covered position key (built and remembered), reported by the lines that compute it. */

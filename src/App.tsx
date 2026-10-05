@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useSettings } from './db/settings'
 import { BuilderPage } from './features/builder/BuilderPage'
 import { GameReview } from './features/games/GameReview'
 import { GamesPage } from './features/games/GamesPage'
 import { HomePage } from './features/dashboard/HomePage'
 import { OverviewPage } from './features/overview/OverviewPage'
-import { PlanPage } from './features/plan/PlanPage'
 import { RepertoirePage } from './features/dashboard/RepertoirePage'
 import { RepertoiresPage } from './features/dashboard/RepertoiresPage'
 import { SettingsPage } from './features/settings/SettingsPage'
@@ -16,6 +15,7 @@ import { GamesIcon, MoonIcon, RepertoireIcon, SettingsIcon, SunIcon, TrainIcon }
 import { completeLoginIfCallback } from './lib/auth/lichess'
 import { useInFocusMode } from './lib/focusMode'
 import { startAutoSync, useSyncStatus } from './lib/sync/auto'
+import { planUrl } from './lib/routes'
 import { useTheme } from './lib/theme'
 
 /** The app's three parts. Each route belongs to one of them; settings sit behind the account pill. */
@@ -155,7 +155,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/repertoire" element={<RepertoiresPage />} />
-          <Route path="/plan/:color" element={<PlanPage />} />
+          <Route path="/plan/:color" element={<PlanRedirect />} />
           <Route path="/rep/:id" element={<RepertoirePage />} />
           <Route path="/rep/:id/build" element={<BuilderPage />} />
           <Route path="/rep/:id/tree" element={<OverviewPage />} />
@@ -192,4 +192,12 @@ export default function App() {
       </nav>
     </div>
   )
+}
+
+/** The plan pages became the repertoire tab: old links and installed shortcuts land there. */
+function PlanRedirect() {
+  const { color } = useParams()
+  const [params] = useSearchParams()
+  const at = params.get('at')
+  return <Navigate to={planUrl(color === 'black' ? 'black' : 'white', at ? at.split(',') : undefined)} replace />
 }
