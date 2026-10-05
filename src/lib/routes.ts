@@ -12,8 +12,9 @@ export function repertoireUrl(color: 'white' | 'black') {
   return `/repertoire?color=${color}`
 }
 
+/** The repertoire tab on one colour, opened at a position of its plan (a choice to make, or the reply it answers). */
 export function planUrl(color: 'white' | 'black', path?: string[]) {
-  return `/plan/${color}${path?.length ? `?at=${path.join(',')}` : ''}`
+  return `${repertoireUrl(color)}${path?.length ? `&at=${path.join(',')}` : ''}`
 }
 
 export type TrainLink = 'review' | 'learn' | 'train'

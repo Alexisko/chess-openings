@@ -24,7 +24,7 @@ import { ownMovesIn, preparednessFrom } from '../../lib/prep/preparedness'
 import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapters'
 import { renameChapter } from '../../lib/openings/renameChapter'
 import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
-import { builderUrl, planUrl, repertoireUrl, trainUrl } from '../../lib/routes'
+import { builderUrl, repertoireUrl, trainUrl } from '../../lib/routes'
 import { confirmDialog, promptDialog } from '../../lib/dialog'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 import { describeRecord, emptyCounts, knowledgeOf, weakness } from '../../lib/srs/knowledge'
@@ -70,8 +70,8 @@ export function RepertoirePage() {
   return (
     <div className="stagger flex flex-col gap-5">
       <div>
-        <Link to={planUrl(rep.color)} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-brass">
-          <ArrowLeft size={13} /> {rep.color === 'white' ? 'White' : 'Black'} repertoire plan
+        <Link to={repertoireUrl(rep.color)} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-brass">
+          <ArrowLeft size={13} /> {rep.color === 'white' ? 'White' : 'Black'} repertoire
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-3">
           <ColorDot color={rep.color} size={16} />
@@ -112,7 +112,7 @@ export function RepertoirePage() {
           <Toggle label="Include in daily training" checked={!rep.paused} onChange={(on) => setRepertoirePaused(rep.id, !on)} />
           {rep.paused && (
             <span className="text-xs text-faint">
-              Paused: left out of Review, Learn and Train on Home. The buttons above still train it.
+              Paused: left out of sessions that train several repertoires. The buttons above still train it.
             </span>
           )}
         </div>
