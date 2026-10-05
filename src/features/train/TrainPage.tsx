@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Card as FsrsCard } from 'ts-fsrs'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
 import {
+  ArrowRight,
   BookIcon,
   CheckIcon,
   CrossIcon,
@@ -33,7 +34,7 @@ import { loadNaming } from '../../lib/openings/naming'
 import { formatMoves, moveSquares, playUci, positionKey, replay, START_FEN, type Color } from '../../lib/chess/position'
 import { filterHash, totalGames, useOpeningNames, type ExplorerData } from '../../lib/explorer'
 import { openingTrail } from '../../lib/openings/names'
-import { builderUrl, trainUrl } from '../../lib/routes'
+import { builderUrl, planUrl, trainUrl } from '../../lib/routes'
 import { KnowledgeBar, KnowledgeChip } from '../../components/Knowledge'
 import { describeRecord, emptyCounts, knowledgeOf, weakness, withResult, type Knowledge, type MoveRecord } from '../../lib/srs/knowledge'
 import {
@@ -47,7 +48,7 @@ import {
   type TrainPool,
   type TrainUnit,
 } from '../../lib/srs/plan'
-import { isNew } from '../../lib/srs/scheduler'
+import { isDue, isNew } from '../../lib/srs/scheduler'
 import { LineRun } from '../../lib/srs/session'
 import { useFocusMode } from '../../lib/focusMode'
 import { playSound } from '../../lib/sound'
@@ -84,6 +85,16 @@ interface ScopeRep {
   records: Map<string, MoveRecord>
   /** Positions in scope where you have a move to play (after the chapter's start). */
   keys: string[]
+}
+
+/** What a running session trains, for its summary. */
+interface SessionScope {
+  /** The repertoires in scope and their moves (positions where you play). */
+  reps: { id: string; keys: string[] }[]
+  /** The scope as train links take it. */
+  link: { repId: string | null; color: Color | null; chapter: string }
+  /** This session's own URL: opening it again builds a fresh session from what's left. */
+  here: string
 }
 
 /** Card and answer record per `${repId}|${positionKey}`, for feedback during the session. */
@@ -209,7 +220,8 @@ interface Feedback {
 interface Stats {
   correct: number
   wrong: number
-  mistakes: string[]
+  /** Missed moves: the moves before, then the one you needed. */
+  mistakes: { before: string; answer: string }[]
   /** Moves graded this session (KnowMap keys), in order. */
   asked: string[]
 }
@@ -232,6 +244,8 @@ function readUnit(): TrainUnit {
 
 export function TrainPage() {
   const [params] = useSearchParams()
+  // Every visit starts a new session, even to the same URL ("Continue review" from a summary).
+  const visit = useLocation().key
   const rawMode = params.get('mode')
   // Old links to the weak-spot drill open Train.
   const mode: TrainMode = rawMode === 'drill' ? 'train' : ((rawMode as TrainMode) || 'review')
@@ -246,7 +260,7 @@ export function TrainPage() {
   // Train asks what to train first.
   const setup = mode === 'train' && !unit
   const [extraNew, setExtraNew] = useState(0)
-  const sessionKey = `${mode}-${repId}-${color}-${chapterParam}-${unit}-${size}-${extraNew}`
+  const sessionKey = `${mode}-${repId}-${color}-${chapterParam}-${unit}-${size}-${extraNew}-${visit}`
   const [loaded, setLoaded] = useState<{ key: string; scope: ScopeRep[]; queue: QueuedRun[]; chapter?: string }>()
 
   useEffect(() => {
@@ -276,6 +290,10 @@ export function TrainPage() {
         ? `${color === 'white' ? 'White' : 'Black'} repertoires`
         : 'All repertoires'
   const learned = scope.reduce((n, s) => n + s.keys.filter((k) => !isNew(s.cards.get(k)!)).length, 0)
+  const unlearned = scope.reduce((n, s) => n + s.keys.filter((k) => isNew(s.cards.get(k)!)).length, 0)
+  const scopeLink = { repId, color, chapter: chapterParam }
+  // Where to add more moves when everything prepared is learned.
+  const buildMore = repId ? builderUrl(repId, chapterParam ? chapterParam.split(',') : []) : color ? planUrl(color) : '/'
   if (setup && learned) return <TrainSetup scope={scope} scopeName={scopeName} params={params} />
   if (!queue.length)
     return (
@@ -287,31 +305,51 @@ export function TrainPage() {
           {MODE_TITLE[mode]} · {scopeName}
         </div>
         <h1 className="page-title mt-1 mb-2">
-          {mode === 'review' ? 'Nothing due' : mode === 'learn' ? 'Done for today' : 'Nothing learned yet'}
+          {mode === 'review'
+            ? 'Nothing due'
+            : mode === 'learn'
+              ? unlearned
+                ? 'Done for today'
+                : 'Every move learned'
+              : 'Nothing learned yet'}
         </h1>
         <p className="mb-6 text-sm text-muted">
           {mode === 'review'
             ? 'Nothing is due. Come back later, learn something new, or train what you know.'
             : mode === 'learn'
-              ? 'No new moves to learn within today’s limit.'
+              ? unlearned
+                ? `You've learned today's new moves. ${unlearned} more ${unlearned === 1 ? 'is' : 'are'} waiting for another day.`
+                : 'Nothing new is waiting. Add the next line to learn more, or train what you know.'
               : 'Training tests the moves you have learned. Learn a few first.'}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           {mode === 'review' && (
             <>
-              <Link className="btn-primary" to={trainUrl('learn', { repId, color, chapter: chapterParam })}>
+              <Link className="btn-primary" to={trainUrl('learn', scopeLink)}>
                 <BookIcon size={16} /> Learn new moves
               </Link>
-              <Link className="btn-ghost" to={trainUrl('train', { repId, color, chapter: chapterParam })}>
+              <Link className="btn-ghost" to={trainUrl('train', scopeLink)}>
                 <TargetIcon size={16} /> Train
               </Link>
             </>
           )}
-          {mode === 'learn' && (
-            <button className="btn-primary" onClick={() => setExtraNew((n) => n + 5)}>
-              Learn 5 more anyway
-            </button>
-          )}
+          {mode === 'learn' &&
+            (unlearned ? (
+              <button className="btn-primary" onClick={() => setExtraNew((n) => n + 5)}>
+                <BookIcon size={16} /> Learn {Math.min(5, unlearned)} more anyway
+              </button>
+            ) : (
+              <>
+                <Link className="btn-primary" to={buildMore}>
+                  {repId ? 'Add the next line' : 'See what to add next'} <ArrowRight size={16} />
+                </Link>
+                {learned > 0 && (
+                  <Link className="btn-ghost" to={trainUrl('train', scopeLink)}>
+                    <TargetIcon size={16} /> Train what you know
+                  </Link>
+                )}
+              </>
+            ))}
           {mode === 'train' && (
             <Link className="btn-primary" to={trainUrl('learn', { repId, color, chapter: chapterParam })}>
               <BookIcon size={16} /> Learn new moves
@@ -332,6 +370,11 @@ export function TrainPage() {
       know={knowMap(scope)}
       chapter={chapter}
       again={mode === 'train' ? trainUrl('train', { repId, color, chapter: chapterParam }) : undefined}
+      scope={{
+        reps: scope.map((s) => ({ id: s.rep.id, keys: s.keys })),
+        link: { repId, color, chapter: chapterParam },
+        here: `/train?${params}`,
+      }}
     />
   )
 }
@@ -453,12 +496,15 @@ function Session({
   know: initialKnow,
   chapter,
   again,
+  scope,
 }: {
   mode: TrainMode
   unit?: TrainUnit
   queue: QueuedRun[]
   know: KnowMap
   chapter?: string
+  /** What the session trains, for the summary's "still due" and "next" counts. */
+  scope: SessionScope
   /** Where to start another session like this one. */
   again?: string
 }) {
@@ -467,6 +513,8 @@ function Session({
   const [queue, setQueue] = useState(initialQueue)
   // Answer records, updated as you answer.
   const [know, setKnow] = useState(initialKnow)
+  // Ended by hand before the last step: the summary offers to carry on.
+  const [ended, setEnded] = useState(false)
   const [index, setIndex] = useState(0)
   // The furthest line reached: lines before it are being played again, as practice.
   const [furthest, setFurthest] = useState(0)
@@ -602,10 +650,12 @@ function Session({
         mode={mode}
         item={item}
         stats={stats}
-        // Ended early: only the steps you got to (the last one reached counts).
-        reached={Math.min(queue.length, furthest + 1)}
-        total={queue.length}
+        // Ended early: only the planned steps you got to (the last one reached counts).
+        reached={ended ? queue.slice(0, furthest + 1).filter((q) => !q.retry).length : undefined}
+        total={queue.filter((q) => !q.retry).length}
+        before={initialKnow}
         know={know}
+        scope={scope}
         again={again}
       />
     )
@@ -655,7 +705,7 @@ function Session({
         setStats((s) => ({
           ...s,
           wrong: s.wrong + 1,
-          mistakes: [...s.mistakes, formatMoves(path.sans.slice(0, live + 1))],
+          mistakes: [...s.mistakes, { before: formatMoves(path.sans.slice(0, live)), answer: formatMoves([exp.san], live) }],
         }))
         record = noteAnswer(exp.fromKey, false)
         await recordAttempt(rep.id, exp.fromKey, false, uci, mode)
@@ -683,7 +733,10 @@ function Session({
   const giveUp = () => onMove('0000')
   // Show move keeps its place under the board, disabled while there's nothing to show.
   const canShow = run.awaitingUser && !run.demo && !run.mustRetry && !browsing
-  const endSession = () => setIndex(queue.length)
+  const endSession = () => {
+    setEnded(true)
+    setIndex(queue.length)
+  }
   const flash = feedback && feedback.kind !== 'info' && fbId ? { kind: feedback.kind, id: fbId } : undefined
   const { startPly, endPly } = current.run
   // Progress counts the planned steps only: a missed move asked again doesn't push the end away.
@@ -1003,87 +1056,181 @@ function FeedbackCard({
   )
 }
 
+/** Levels from weakest to strongest, to tell whether a move went up or down. */
+const LEVEL_RANK: Record<Knowledge, number> = { new: 0, shaky: 1, learning: 2, solid: 3, mastered: 4 }
+
+/** Mistakes listed before the rest fold away. */
+const MISTAKES_SHOWN = 5
+
 function Summary({
   mode,
   stats,
   item,
   reached,
   total,
+  before,
   know,
+  scope,
   again,
 }: {
   mode: TrainMode
   stats: Stats
   /** What one step of the session is: a line, or a single move in Train › Moves. */
   item: 'move' | 'line'
-  /** Steps you got to before the session ended. */
-  reached: number
+  /** Planned steps reached when the session was ended early; undefined when it ran to the end. */
+  reached?: number
+  /** Planned steps in the session (second tries not counted). */
   total: number
+  /** Answer records when the session started. */
+  before: KnowMap
   know: KnowMap
+  scope: SessionScope
   again?: string
 }) {
   const attempts = stats.correct + stats.wrong
   const accuracy = attempts ? stats.correct / attempts : null
+  const paused = reached !== undefined && reached < total
+  const [allMistakes, setAllMistakes] = useState(false)
   // Not when the session was ended before playing anything. The timeout skips StrictMode's double run.
   useEffect(() => {
     if (!attempts) return
     const t = setTimeout(() => playSound('session-complete'))
     return () => clearTimeout(t)
   }, [attempts])
-  // The moves asked, with their cards as the session left them.
-  const cards = useLiveQuery(
-    () => db.cards.where('[repertoireId+positionKey]').anyOf(stats.asked.map((k) => k.split('|') as [string, string])).toArray(),
-    [stats.asked],
-  )
-  const counts = useMemo(() => {
+  // Every card in scope as the session left it: the moves asked, and what's left to do.
+  const cards = useLiveQuery(async () => {
+    const rows = await db.cards.where('repertoireId').anyOf(scope.reps.map((r) => r.id)).toArray()
+    const inScope = new Map(scope.reps.map((r) => [r.id, new Set(r.keys)]))
+    return rows.filter((c) => inScope.get(c.repertoireId)?.has(c.positionKey))
+  }, [scope])
+  const view = useMemo(() => {
     if (!cards) return undefined
     const now = new Date()
-    const c = emptyCounts()
-    for (const card of cards) c[knowledgeOf(card.fsrs, know.get(knowKey(card.repertoireId, card.positionKey))?.record, now)]++
-    return c
-  }, [cards, know])
+    const tomorrow = new Date(now)
+    tomorrow.setHours(24, 0, 0, 0)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const asked = new Set(stats.asked)
+    const counts = emptyCounts()
+    let up = 0
+    let down = 0
+    for (const card of cards) {
+      const k = knowKey(card.repertoireId, card.positionKey)
+      if (!asked.has(k)) continue
+      const after = knowledgeOf(card.fsrs, know.get(k)?.record, now)
+      counts[after]++
+      const was = before.get(k)
+      if (!was) continue
+      const diff = LEVEL_RANK[after] - LEVEL_RANK[knowledgeOf(was.card, was.record, now)]
+      if (diff > 0) up++
+      else if (diff < 0) down++
+    }
+    return {
+      counts,
+      up,
+      down,
+      due: cards.filter((c) => isDue(c.fsrs, now)).length,
+      dueTomorrow: cards.filter((c) => !isNew(c.fsrs) && !isDue(c.fsrs, now) && new Date(c.fsrs.due) < tomorrow).length,
+      fresh: cards.filter((c) => isNew(c.fsrs)).length,
+    }
+  }, [cards, stats.asked, before, know])
+
+  const steps = `${paused ? `${reached} of ${total}` : total} ${item}${total === 1 ? '' : 's'}`
+  const title = paused
+    ? 'Session paused'
+    : mode === 'review' && view && !view.due
+      ? 'All caught up'
+      : mode === 'learn'
+        ? 'New moves learned'
+        : 'Session complete'
+  // What to do next, in one sentence.
+  const next = !view
+    ? undefined
+    : paused
+      ? mode === 'review' && view.due
+        ? `${view.due} move${view.due === 1 ? ' is' : 's are'} still due. Carry on where you left off.`
+        : 'Carry on where you left off, or come back later.'
+      : mode === 'review'
+        ? view.due
+          ? `${view.due} more move${view.due === 1 ? ' is' : 's are'} due now.`
+          : view.dueTomorrow
+            ? `${view.dueTomorrow} move${view.dueTomorrow === 1 ? '' : 's'} due tomorrow.`
+            : 'Nothing more is due tomorrow.'
+        : mode === 'learn'
+          ? 'They come back for review tomorrow.'
+          : undefined
+  const primary = paused
+    ? { to: scope.here, label: mode === 'review' ? 'Continue review' : 'Continue' }
+    : mode === 'review' && view?.due
+      ? { to: trainUrl('review', scope.link), label: 'Review the rest' }
+      : { to: '/', label: 'Home' }
+  const secondary =
+    mode === 'train'
+      ? { to: again ?? trainUrl('train', scope.link), label: 'Train again', icon: <TargetIcon size={16} /> }
+      : view?.fresh && mode === 'review'
+        ? { to: trainUrl('learn', scope.link), label: 'Learn new moves', icon: <BookIcon size={16} /> }
+        : { to: trainUrl('train', scope.link), label: 'Train', icon: <TargetIcon size={16} /> }
+  const mistakes = allMistakes ? stats.mistakes : stats.mistakes.slice(0, MISTAKES_SHOWN)
+
   return (
-    <div className="card mx-auto mt-6 max-w-md animate-rise p-6 md:p-8">
-      <div className="flex items-center gap-5">
-        <ScoreRing value={accuracy} size={88} stroke={6} />
-        <div>
+    <div className="card mx-auto mt-2 max-w-md animate-rise p-6 md:mt-6 md:p-8">
+      <div className="flex items-center gap-5 max-sm:flex-col max-sm:items-start max-sm:gap-4">
+        {accuracy !== null && <ScoreRing value={accuracy} size={88} stroke={6} title="Right first time" />}
+        <div className="min-w-0">
           <div className="eyebrow">{MODE_TITLE[mode]}</div>
-          <h1 className="page-title mt-1">Session complete</h1>
+          <h1 className="page-title mt-1">{title}</h1>
           <p className="mt-1 text-sm text-muted">
-            {reached < total ? `${reached} of ${total}` : total} {item}
-            {total === 1 ? '' : 's'} · {stats.correct} correct · {stats.wrong} mistake{stats.wrong === 1 ? '' : 's'}
+            {steps} · {stats.correct} correct · {stats.wrong} mistake{stats.wrong === 1 ? '' : 's'}
           </p>
         </div>
       </div>
-      {counts && stats.asked.length > 0 && (
-        <div className="mt-6">
-          <div className="eyebrow mb-2">
-            The {stats.asked.length} move{stats.asked.length === 1 ? '' : 's'} you were asked, now
+      {next && <p className="mt-5 font-display text-lg leading-snug">{next}</p>}
+      <div className="mt-5 flex gap-2">
+        <Link className="btn-primary flex-1 py-2.5" to={primary.to}>
+          {primary.label}
+        </Link>
+        <Link className="btn-ghost flex-1" to={secondary.to}>
+          {secondary.icon} {secondary.label}
+        </Link>
+      </div>
+      {view && stats.asked.length > 0 && (
+        <div className="mt-7 border-t border-line/70 pt-5">
+          <div className="mb-2 flex items-baseline gap-3">
+            <span className="eyebrow">
+              The {stats.asked.length} move{stats.asked.length === 1 ? '' : 's'} you were asked
+            </span>
+            {(view.up > 0 || view.down > 0) && (
+              <span className="ml-auto text-xs whitespace-nowrap text-muted tabular-nums">
+                {view.up > 0 && <span className="text-accent">↑ {view.up} up</span>}
+                {view.up > 0 && view.down > 0 && ' · '}
+                {view.down > 0 && <span className="text-bad">↓ {view.down} down</span>}
+              </span>
+            )}
           </div>
-          <KnowledgeBar counts={counts} hideNew />
+          <KnowledgeBar counts={view.counts} hideNew />
         </div>
       )}
       {stats.mistakes.length > 0 && (
         <div className="mt-6">
           <div className="eyebrow mb-2">Mistakes</div>
           <ul className="flex flex-col gap-1.5">
-            {stats.mistakes.map((m, i) => (
+            {mistakes.map((m, i) => (
               <li key={i} className="flex items-start gap-2 rounded-lg bg-surface-2/70 px-3 py-2 text-sm">
-                <CrossIcon size={14} className="mt-0.5 shrink-0 text-bad" />
-                <span className="font-display">{m}</span>
+                <CrossIcon size={14} className="mt-1 shrink-0 text-bad" />
+                <span className="font-display">
+                  {m.before && <span className="text-muted">{m.before} </span>}
+                  <span className="font-semibold">{m.answer}</span>
+                  <span className="ml-1.5 font-sans text-xs text-muted">was the move</span>
+                </span>
               </li>
             ))}
           </ul>
+          {stats.mistakes.length > MISTAKES_SHOWN && (
+            <button className="mt-2 text-xs text-muted hover:text-brass" onClick={() => setAllMistakes((v) => !v)}>
+              {allMistakes ? 'Show fewer' : `Show all ${stats.mistakes.length}`}
+            </button>
+          )}
         </div>
       )}
-      <div className="mt-6 flex gap-2">
-        <Link className="btn-primary flex-1" to="/">
-          Home
-        </Link>
-        <Link className="btn-ghost flex-1" to={again ?? trainUrl('train')}>
-          <TargetIcon size={16} /> {again ? 'Train again' : 'Train'}
-        </Link>
-      </div>
     </div>
   )
 }
