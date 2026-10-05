@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { Card as FsrsCard } from 'ts-fsrs'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
@@ -814,26 +814,25 @@ function Session({
             onMove={onMove}
             flash={flash}
           />
-          <div className="grid grid-cols-2 gap-2">
-            {explaining ? (
-              <button className="btn-primary col-span-2 min-h-12 text-[15px]" onClick={() => setContinued(fbId)} autoFocus>
-                Continue
-              </button>
-            ) : (
-              <>
-                <button
-                  className="btn-ghost min-h-12 text-[15px]"
-                  onClick={giveUp}
-                  disabled={!canShow}
-                  aria-description={practice ? "Practice: doesn't count" : 'Counts as a miss'}
-                >
-                  <EyeIcon size={18} /> Show move
-                </button>
-                <button className="btn-ghost min-h-12 text-[15px]" onClick={() => goToLine(index + 1)}>
-                  <SkipIcon size={18} /> Skip {item}
-                </button>
-              </>
-            )}
+          {/* Looking back through the line is what a session reaches for most: big buttons under the board. */}
+          <div className="grid grid-cols-4 gap-2" title="Look back at the moves so far · Keyboard: ← →">
+            <button className="btn-ghost min-h-12" onClick={() => setView(0)} disabled={view <= 0} aria-label="Initial position">
+              <FirstIcon size={20} />
+            </button>
+            <button className="btn-ghost min-h-12" onClick={() => setView(view - 1)} disabled={view <= 0} aria-label="Back">
+              <PrevIcon size={20} />
+            </button>
+            <button className="btn-ghost min-h-12" onClick={() => setView(view + 1)} disabled={!browsing} aria-label="Forward">
+              <NextIcon size={20} />
+            </button>
+            <button
+              className={`min-h-12 ${browsing ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setView(live)}
+              disabled={!browsing}
+              aria-label="Back to the current position"
+            >
+              <LastIcon size={20} />
+            </button>
           </div>
         </div>
 
@@ -844,6 +843,7 @@ function Session({
             awaiting={run.awaitingUser}
             demo={run.demo}
             autoMine={!run.finished && !run.awaitingUser && !!expected?.byMe}
+            onContinue={explaining ? () => setContinued(fbId) : undefined}
             punish={
               punish && run.awaitingUser && !run.mustRetry && !browsing && lastTheirs
                 ? { glyph: punish, move: formatMoves([lastTheirs.san], start.moves.length + run.ply - 1) }
@@ -859,23 +859,7 @@ function Session({
           )}
 
           <div className="card px-4 py-3">
-            <div className="-mr-2 mb-1 flex items-center gap-2">
-              <span className="eyebrow">Line so far</span>
-              <div className="ml-auto flex" title="Look back at the moves so far · Keyboard: ← →">
-                <HistoryButton onClick={() => setView(0)} disabled={view <= 0} label="Initial position">
-                  <FirstIcon size={18} />
-                </HistoryButton>
-                <HistoryButton onClick={() => setView(view - 1)} disabled={view <= 0} label="Back">
-                  <PrevIcon size={18} />
-                </HistoryButton>
-                <HistoryButton onClick={() => setView(view + 1)} disabled={!browsing} label="Forward">
-                  <NextIcon size={18} />
-                </HistoryButton>
-                <HistoryButton onClick={() => setView(live)} disabled={!browsing} label="Back to the current position" on={browsing}>
-                  <LastIcon size={18} />
-                </HistoryButton>
-              </div>
-            </div>
+            <div className="eyebrow mb-1.5">Line so far</div>
             {browsing && (
               <button className="mb-1 text-xs text-brass underline-offset-2 hover:underline" onClick={() => setView(live)}>
                 Looking back · return to the current position
@@ -886,7 +870,19 @@ function Session({
             {endNote && run.finished && <p className="mt-2 text-xs text-muted">↪ {endNote}</p>}
           </div>
 
-          <div className="flex gap-2 lg:mt-auto">
+          {/* Every button stays in place (disabled rather than removed), so the row never reflows. */}
+          <div className="flex flex-wrap gap-2 lg:mt-auto">
+            <button
+              className="btn-ghost"
+              onClick={giveUp}
+              disabled={!canShow}
+              aria-description={practice ? "Practice: doesn't count" : 'Counts as a miss'}
+            >
+              <EyeIcon size={16} /> Show move
+            </button>
+            <button className="btn-ghost" onClick={() => goToLine(index + 1)}>
+              <SkipIcon size={16} /> Skip {item}
+            </button>
             <button className="btn-ghost" onClick={() => goToLine(index - 1)} disabled={index === 0} title={`Play the previous ${item} again (not graded)`}>
               <PrevIcon size={16} /> Previous {item}
             </button>
@@ -943,35 +939,6 @@ function usePunish(move: RepMove | undefined): '?' | '??' | undefined {
   return g === '?' || g === '??' ? g : undefined
 }
 
-/** A compact step button for looking back through the line; touch-sized on touch screens. */
-function HistoryButton({
-  onClick,
-  disabled,
-  label,
-  on,
-  children,
-}: {
-  onClick: () => void
-  disabled: boolean
-  label: string
-  /** Highlighted: the way back to the live position while looking back. */
-  on?: boolean
-  children: ReactNode
-}) {
-  return (
-    <button
-      className={`grid size-9 place-items-center rounded-lg transition pointer-coarse:size-11 disabled:pointer-events-none disabled:opacity-30 ${
-        on ? 'bg-brass/12 text-brass' : 'text-muted hover:bg-surface-3 hover:text-ink'
-      }`}
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-    >
-      {children}
-    </button>
-  )
-}
-
 /** The moves so far, numbered; click one to look at the position after it. */
 function MoveList({ sans, view, onJump }: { sans: string[]; view: number; onJump: (ply: number) => void }) {
   if (!sans.length) return <p className="font-display text-[17px] leading-relaxed text-muted">Starting position</p>
@@ -1004,6 +971,7 @@ function FeedbackCard({
   demo,
   autoMine,
   punish,
+  onContinue,
 }: {
   feedback?: Feedback
   awaiting: boolean
@@ -1012,6 +980,8 @@ function FeedbackCard({
   autoMine: boolean
   /** The opponent's last move is a mistake to punish. */
   punish?: { glyph: '?' | '??'; move: string }
+  /** The line is paused on an explained move: Continue goes on (Enter too, as it takes focus). */
+  onContinue?: () => void
 }) {
   const kind = feedback?.kind
   const tone =
@@ -1063,6 +1033,11 @@ function FeedbackCard({
           </p>
         )}
       </div>
+      {onContinue && (
+        <button className="btn-primary ml-auto min-h-11 shrink-0 px-5" onClick={onContinue} autoFocus>
+          Continue
+        </button>
+      )}
     </div>
   )
 }
