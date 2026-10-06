@@ -802,7 +802,7 @@ function Session({
         </span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[var(--board)_minmax(0,1fr)] lg:gap-5">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[var(--board)_minmax(0,1fr)] lg:gap-5">
         <div className="flex flex-col gap-3">
           <Board
             key={boardVersion}
