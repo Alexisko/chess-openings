@@ -4,6 +4,7 @@ import { db } from '../../db/schema'
 import { getSettings } from '../../db/settings'
 import { SNAPSHOT_TABLES } from '../../db/snapshot'
 import { getSyncBase } from '../../db/sync'
+import { reportTraining } from '../pwa/reminders'
 import { httpApi } from './api'
 import { syncOnce, type FirstSyncMode } from './sync'
 
@@ -45,6 +46,12 @@ let running: Promise<void> | null = null
 let again = false
 
 async function run(mode?: FirstSyncMode) {
+  await syncWithServer(mode)
+  // With the merged history, so the reminder knows about training done on other devices.
+  await reportTraining().catch(() => undefined)
+}
+
+async function syncWithServer(mode?: FirstSyncMode) {
   const { lichessUser } = await getSettings()
   if (!lichessUser) return setStatus({ state: 'off', user: undefined, error: undefined })
   // Waiting for the user to choose how to combine the data: only an explicit choice syncs.

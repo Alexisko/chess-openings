@@ -26,8 +26,9 @@ dist-ssr
 # Copied from node_modules by scripts/copy-stockfish.mjs
 public/stockfish
 
-# Cloudflare Worker local state
+# Cloudflare Worker local state and secrets
 .wrangler
+.dev.vars
 worker/worker-configuration.d.ts
 
 # Claude desktop app dev server configs (per machine)

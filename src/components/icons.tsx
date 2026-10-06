@@ -224,3 +224,42 @@ export function ExternalIcon(p: IconProps) {
     </Svg>
   )
 }
+
+/** The daily streak. */
+export function FlameIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 21.5c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.4 3.6-8.3.5 1.6 1.2 2.7 2.4 3.4C11.8 7 13 4.4 15.6 2.5c-.3 3 1 4.6 2.2 6.3 1 1.5 1.7 3 1.7 5.1 0 4.6-3.3 7.6-7.5 7.6z" />
+      <path d="M12 21.5c-1.7 0-3-1.2-3-3 0-2 1.6-2.9 2.3-4.6.9 1 1.6 1.5 2.3 1.8.4-.8.8-1.3 1.4-1.8.4 1 1 2 1 3.4 0 2.4-1.7 4.2-4 4.2z" />
+    </Svg>
+  )
+}
+
+export function BellIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M6 10a6 6 0 0 1 12 0c0 4.5 1.5 6 2 7H4c.5-1 2-2.5 2-7z" />
+      <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+    </Svg>
+  )
+}
+
+/** A phone with an arrow into it: install the app. */
+export function InstallIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+      <path d="M12 7v7M9 11.5l3 3 3-3M10.5 18.5h3" />
+    </Svg>
+  )
+}
+
+/** Safari's Share button: a box with an arrow out of it. */
+export function ShareIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3v12M8 6.5 12 2.5l4 4" />
+      <path d="M8.5 10H6.5v11h11V10h-2" />
+    </Svg>
+  )
+}

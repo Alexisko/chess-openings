@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
+import { StreakNote } from '../../components/Streak'
 import {
   ArrowRight,
   BookIcon,
@@ -19,7 +20,7 @@ import {
   TrainIcon,
 } from '../../components/icons'
 import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
-import { learnedToday, loadMoveRecords, recordAttempt } from '../../db/reviews'
+import { learnedToday, loadMoveRecords, recordAttempt, useStreak } from '../../db/reviews'
 import { db, type RepMove, type Repertoire, type ReviewMode } from '../../db/schema'
 import { GLYPH_TONE } from '../../lib/chess/glyphs'
 import { engineGlyphOf } from '../../lib/engine/useEngineGlyphs'
@@ -1081,6 +1082,7 @@ function Summary({
   again?: string
 }) {
   const attempts = stats.correct + stats.wrong
+  const streak = useStreak()
   const accuracy = attempts ? stats.correct / attempts : null
   const paused = reached !== undefined && reached < total
   const [allMistakes, setAllMistakes] = useState(false)
@@ -1177,6 +1179,11 @@ function Summary({
         </div>
       </div>
       {next && <p className="mt-5 font-display text-lg leading-snug">{next}</p>}
+      {streak && attempts > 0 && (
+        <div className="mt-4">
+          <StreakNote streak={streak} />
+        </div>
+      )}
       <div className="mt-5 flex gap-2">
         <Link className="btn-primary flex-1 py-2.5" to={primary.to}>
           {primary.label}
