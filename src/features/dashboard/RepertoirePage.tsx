@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { pct, scoreColor } from '../../components/format'
 import { ChapterTraining } from '../../components/ChapterTraining'
-import { ArrowLeft, BookIcon, PencilIcon, TargetIcon, TrainIcon } from '../../components/icons'
+import { ArrowLeft, BookIcon, PencilIcon, TargetIcon, TrainIcon, TrashIcon } from '../../components/icons'
 import { ColorDot, Notice, ScoreRing, Section, Toggle } from '../../components/ui'
 import {
   addLine,
@@ -25,7 +25,7 @@ import { chapterShare, firstMove, type Chapter } from '../../lib/openings/chapte
 import { renameChapter } from '../../lib/openings/renameChapter'
 import { useRepertoireChapters } from '../../lib/openings/useRepertoireChapters'
 import { builderUrl, repertoireUrl, trainUrl } from '../../lib/routes'
-import { confirmDialog, promptDialog } from '../../lib/dialog'
+import { confirmDeleteRepertoire, promptDialog } from '../../lib/dialog'
 import { startLogin } from '../../lib/auth/lichess'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 import { describeRecord, emptyCounts, knowledgeOf, weakness } from '../../lib/srs/knowledge'
@@ -70,6 +70,11 @@ export function RepertoirePage() {
     const name = await promptDialog({ title: 'Rename repertoire', defaultValue: rep.name, confirmLabel: 'Rename' })
     if (name?.trim()) await renameRepertoire(rep.id, name.trim())
   }
+  const remove = async () => {
+    if (!(await confirmDeleteRepertoire(rep.name, data.moves.length))) return
+    await deleteRepertoire(rep.id)
+    navigate(repertoireUrl(rep.color))
+  }
 
   return (
     <div className="stagger flex flex-col gap-5">
@@ -88,6 +93,14 @@ export function RepertoirePage() {
           </h1>
           <button className="-ml-1.5 rounded-md p-1.5 text-faint hover:bg-surface-3 hover:text-ink" onClick={rename} aria-label="Rename repertoire" title="Rename repertoire">
             <PencilIcon size={16} />
+          </button>
+          <button
+            className="-ml-3 rounded-md p-1.5 text-faint hover:bg-bad/15 hover:text-bad"
+            onClick={remove}
+            aria-label="Delete repertoire"
+            title="Delete repertoire"
+          >
+            <TrashIcon size={16} />
           </button>
           {repStart(rep).moves.length > 0 && (
             <span className="rounded-md bg-surface-2 px-2 py-0.5 font-display text-sm text-muted">
@@ -214,21 +227,8 @@ export function RepertoirePage() {
       <PgnTools data={data} />
 
       <div>
-        <button
-          className="btn-danger text-xs"
-          onClick={async () => {
-            const ok = await confirmDialog({
-              title: `Delete “${rep.name}”?`,
-              message: 'All its moves, notes on its moves and review history are deleted. This cannot be undone.',
-              confirmLabel: 'Delete repertoire',
-              danger: true,
-            })
-            if (!ok) return
-            await deleteRepertoire(rep.id)
-            navigate(repertoireUrl(rep.color))
-          }}
-        >
-          Delete repertoire
+        <button className="btn-danger text-xs" onClick={remove}>
+          <TrashIcon size={14} /> Delete repertoire
         </button>
       </div>
     </div>

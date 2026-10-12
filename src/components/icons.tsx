@@ -217,6 +217,14 @@ export function PencilIcon(p: IconProps) {
   )
 }
 
+export function TrashIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3" />
+    </Svg>
+  )
+}
+
 export function ExternalIcon(p: IconProps) {
   return (
     <Svg {...p}>
