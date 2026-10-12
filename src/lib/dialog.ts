@@ -10,6 +10,8 @@ interface Base {
   confirmLabel?: string
   /** Style the confirm button as destructive. */
   danger?: boolean
+  /** Seconds the confirm button stays disabled, counting down, so it can't be clicked by reflex. */
+  confirmDelay?: number
 }
 
 export type DialogRequest = { id: number } & (
@@ -59,5 +61,21 @@ export function confirmOverlap(names: string[]) {
       `This overlaps with ${names.map((n) => `“${n}”`).join(', ')}: the same positions would be in two ` +
       'repertoires and be drilled twice.',
     confirmLabel: 'Create anyway',
+  })
+}
+
+/** Asks before deleting a repertoire, saying how many moves go with it. */
+export function confirmDeleteRepertoire(name: string, moves: number) {
+  return confirmDialog({
+    title: `Delete “${name}”?`,
+    message: [
+      moves > 0
+        ? `${moves} move${moves === 1 ? '' : 's'} will be lost, with their notes and review history.`
+        : 'It has no moves yet.',
+      'This cannot be undone.',
+    ],
+    confirmLabel: 'Delete repertoire',
+    danger: true,
+    confirmDelay: moves > 0 ? 3 : 0,
   })
 }

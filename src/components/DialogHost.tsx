@@ -1,30 +1,41 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { closeDialog, currentDialog, subscribeDialogs } from '../lib/dialog'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { closeDialog, currentDialog, subscribeDialogs, type DialogRequest } from '../lib/dialog'
 
 /** Renders the dialog opened with confirmDialog / promptDialog as a modal. */
 export function DialogHost() {
   const req = useSyncExternalStore(subscribeDialogs, currentDialog)
+  // Keyed so each dialog starts with its own countdown.
+  return req ? <Dialog key={req.id} req={req} /> : null
+}
+
+function Dialog({ req }: { req: DialogRequest }) {
   const ref = useRef<HTMLDialogElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [wait, setWait] = useState(req.confirmDelay ?? 0)
 
   useEffect(() => {
     const d = ref.current
-    if (req && d && !d.open) d.showModal()
-  }, [req])
+    if (d && !d.open) d.showModal()
+  }, [])
 
-  if (!req) return null
+  useEffect(() => {
+    if (wait <= 0) return
+    const t = setTimeout(() => setWait((w) => w - 1), 1000)
+    return () => clearTimeout(t)
+  }, [wait])
 
   const finish = (ok: boolean) => {
+    if (ok && wait > 0) return
     if (req.kind === 'confirm') req.resolve(ok)
     else req.resolve(ok ? (inputRef.current?.value ?? '') : null)
     ref.current?.close()
     closeDialog()
   }
   const paragraphs = req.message === undefined ? [] : Array.isArray(req.message) ? req.message : [req.message]
+  const label = req.confirmLabel ?? 'OK'
 
   return (
     <dialog
-      key={req.id}
       ref={ref}
       className="modal"
       aria-labelledby="dialog-title"
@@ -64,8 +75,18 @@ export function DialogHost() {
           <button type="button" className="btn-ghost" onClick={() => finish(false)} autoFocus={req.danger}>
             Cancel
           </button>
-          <button className={req.danger ? 'btn-danger-solid' : 'btn-primary'} autoFocus={req.kind === 'confirm' && !req.danger}>
-            {req.confirmLabel ?? 'OK'}
+          <button
+            className={req.danger ? 'btn-danger-solid' : 'btn-primary'}
+            autoFocus={req.kind === 'confirm' && !req.danger}
+            disabled={wait > 0}
+          >
+            {wait > 0 ? (
+              <>
+                {label} <span className="tabular-nums">({wait})</span>
+              </>
+            ) : (
+              label
+            )}
           </button>
         </div>
       </form>

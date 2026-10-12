@@ -202,6 +202,12 @@ function CoveredDetail({
         <Link className="btn-ghost px-2.5 py-1.5 text-xs" to={builderUrl(rep.id, node.path)}>
           Open in builder
         </Link>
+        {/* Phones show no header, so its link to the repertoire's page goes with the actions. */}
+        {compact && (
+          <Link className="btn-ghost px-2.5 py-1.5 text-xs" to={`/rep/${rep.id}`}>
+            Open repertoire <ArrowRight size={13} />
+          </Link>
+        )}
       </div>
 
       {data && data.cards.length > 0 && records && (
