@@ -41,16 +41,18 @@ describe('reminderMessage', () => {
     due: [
       [hour('2026-10-01T09:00:00Z'), 3],
       [hour('2026-10-06T16:20:00Z'), 2],
+      [hour('2026-10-06T22:40:00Z'), 4],
+      [hour('2026-10-07T00:00:00Z'), 1],
       [hour('2026-10-07T09:00:00Z'), 5],
     ],
   }
 
-  it('asks to keep the streak and counts the moves due by now', () => {
+  it('asks to keep the streak and counts the moves due by the end of the day', () => {
     expect(reminderMessage(status, 'UTC', now)).toEqual({
       title: 'Keep your 6-day streak',
-      body: '5 moves to review. Answer 10 moves today to keep it going.',
+      body: '9 moves to review. Answer 10 moves today to keep it going.',
       url: 'train?mode=review',
-      badge: 5,
+      badge: 9,
     })
   })
 

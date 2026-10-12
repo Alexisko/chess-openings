@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { recordsFromLogs, type MoveRecord } from '../lib/srs/knowledge'
 import { gradeCard, isDue, isNew } from '../lib/srs/scheduler'
 import { computeStreak, type Streak } from '../lib/srs/streak'
+import { useToday } from '../lib/srs/useToday'
 import { db, now, uuid, type AppDB, type ReviewMode } from './schema'
 import { getSettings, useSettings } from './settings'
 
@@ -61,5 +62,6 @@ export async function loadStreak(d: AppDB = db): Promise<Streak> {
 
 export function useStreak(): Streak | undefined {
   const goal = useSettings()?.dailyGoal
-  return useLiveQuery(async () => (goal ? computeStreak(await db.reviews.toArray(), goal, Date.now()) : undefined), [goal])
+  const today = useToday()
+  return useLiveQuery(async () => (goal ? computeStreak(await db.reviews.toArray(), goal, Date.now()) : undefined), [goal, today])
 }
