@@ -14,6 +14,7 @@ import { planScore, type CoveredNode, type RepScore } from '../../lib/plan/plan'
 import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { planUrl, repertoireUrl, trainUrl } from '../../lib/routes'
 import { isDue, isNew } from '../../lib/srs/scheduler'
+import { useToday } from '../../lib/srs/useToday'
 import { InstallHint } from '../settings/AppSettings'
 import { COLOR_NAME, LineReporter, NextStep, PrepBar } from './RepertoiresPage'
 
@@ -22,6 +23,8 @@ export function HomePage() {
   const reps = useRepertoires()
   const settings = useSettings()
   const streak = useStreak()
+  // The counts are per day: an app left open overnight starts the new day's.
+  const today = useToday()
   const counts = useLiveQuery(async () => {
     const paused = new Set((await db.repertoires.toArray()).filter((r) => r.paused).map((r) => r.id))
     const cards = (await db.cards.toArray()).filter((c) => !paused.has(c.repertoireId))
@@ -31,7 +34,7 @@ export function HomePage() {
       fresh: cards.filter((c) => isNew(c.fsrs)).length,
       learnedToday: await learnedToday(),
     }
-  }, [])
+  }, [today])
   const newLeft = counts && settings ? Math.max(0, Math.min(counts.fresh, settings.newPerDay - counts.learnedToday)) : 0
 
   const headline = !counts
@@ -71,7 +74,7 @@ export function HomePage() {
                 <BookIcon size={17} /> Learn new
               </Link>
             ) : (
-              counts && <p className="py-1 text-center text-sm text-muted">Nothing due. Free training is always open.</p>
+              counts && <p className="py-1 text-center text-sm text-muted">Nothing more is due today. Free training is always open.</p>
             )}
             {learnBlocked && counts && (counts.due > 0 || counts.fresh > 0) && (
               <p className="text-center text-xs text-muted">{learnBlocked}</p>

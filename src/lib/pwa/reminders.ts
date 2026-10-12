@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { loadStreak } from '../../db/reviews'
 import { db } from '../../db/schema'
 import { getSettings } from '../../db/settings'
-import { isNew } from '../srs/scheduler'
+import { isDue, isNew } from '../srs/scheduler'
 import { addDays } from '../srs/streak'
 import { SYNC_URL } from '../sync/api'
 import { isIos } from './install'
@@ -162,10 +162,10 @@ export async function testReminder(): Promise<void> {
 export async function reportTraining(): Promise<void> {
   const paused = new Set((await db.repertoires.toArray()).filter((r) => r.paused).map((r) => r.id))
   const cards = (await db.cards.toArray()).filter((c) => !paused.has(c.repertoireId) && !isNew(c.fsrs))
-  const now = Date.now()
-  const dueNow = cards.filter((c) => new Date(c.fsrs.due).getTime() <= now).length
+  const now = new Date()
+  const dueToday = cards.filter((c) => isDue(c.fsrs, now)).length
   if ('setAppBadge' in navigator) {
-    await (dueNow ? navigator.setAppBadge(dueNow) : navigator.clearAppBadge()).catch(() => undefined)
+    await (dueToday ? navigator.setAppBadge(dueToday) : navigator.clearAppBadge()).catch(() => undefined)
   }
 
   const r = current

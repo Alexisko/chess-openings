@@ -42,6 +42,9 @@ are against the moves real opponents play.
   - *Learn* plays a new line with hints, then asks you to replay it from memory.
   - *Review* replays lines from the start and covers every due card with as few lines as possible. A missed
     move comes back a few lines later, ungraded.
+  - Reviews are daily: everything due before midnight is due from the start of the day, and an answered move
+    (right or wrong) never comes back before the next day. A move just learned is checked the day after. So
+    "all caught up" holds until tomorrow.
   - *Train* (replaces the old weak-spot drill) tests any learned move, due or not, for everything, one colour,
     a repertoire or a chapter. Choose *Moves* (single positions after a two-move lead-in) or *Lines* (whole
     lines, a shared start asked once). Moves you missed recently or haven't been asked for a while come up

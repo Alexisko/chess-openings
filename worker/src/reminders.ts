@@ -109,7 +109,9 @@ export function reminderMessage(status: TrainingStatus | undefined, tz: string, 
   const done = status.recent[today] ?? 0
   if (done >= status.goal) return null
   const streak = status.lastGoalDay === addDays(today, -1) ? status.streak : 0
-  const due = status.due.reduce((n, [hour, count]) => (hour * HOUR <= now ? n + count : n), 0)
+  // Reviews are daily: whatever comes due before the device's day ends is due today.
+  const dayEnd = zonedToUtc(addDays(today, 1), '00:00', tz)
+  const due = status.due.reduce((n, [hour, count]) => (hour * HOUR < dayEnd ? n + count : n), 0)
 
   const left = status.goal - done
   const todo = done > 0 ? `${left} more move${left === 1 ? '' : 's'} today` : `Answer ${moves(status.goal)} today`

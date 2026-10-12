@@ -317,7 +317,7 @@ export function TrainPage() {
         </h1>
         <p className="mb-6 text-sm text-muted">
           {mode === 'review'
-            ? 'Nothing is due. Come back later, learn something new, or train what you know.'
+            ? 'Nothing is due today. Come back tomorrow, learn something new, or train what you know.'
             : mode === 'learn'
               ? unlearned
                 ? `You've learned today's new moves. ${unlearned} more ${unlearned === 1 ? 'is' : 'are'} waiting for another day.`
@@ -1146,7 +1146,7 @@ function Summary({
         : 'Carry on where you left off, or come back later.'
       : mode === 'review'
         ? view.due
-          ? `${view.due} more move${view.due === 1 ? ' is' : 's are'} due now.`
+          ? `${view.due} more move${view.due === 1 ? ' is' : 's are'} due today.`
           : view.dueTomorrow
             ? `${view.dueTomorrow} move${view.dueTomorrow === 1 ? '' : 's'} due tomorrow.`
             : 'Nothing more is due tomorrow.'

@@ -124,6 +124,55 @@ describe('planning', () => {
   })
 })
 
+describe('the daily schedule', () => {
+  // Local times: the schedule follows the device's days.
+  const morning = new Date(2026, 9, 12, 9, 0)
+  const review = (due: Date) => ({ ...gradeCard(createEmptyCard(new Date(2026, 8, 1)), true, new Date(2026, 8, 1)).card, due })
+
+  it('has everything due today due from the start of the day', () => {
+    expect(isDue(review(new Date(2026, 9, 12, 23, 30)), morning)).toBe(true)
+    expect(isDue(review(new Date(2026, 9, 11, 8, 0)), morning)).toBe(true)
+    expect(isDue(review(new Date(2026, 9, 13, 0, 0)), morning)).toBe(false)
+    expect(isDue(createEmptyCard(morning), morning)).toBe(false)
+  })
+
+  it('never brings an answered move back the same day', () => {
+    const night = new Date(2026, 9, 12, 23, 59)
+    for (const at of [new Date(2026, 9, 12, 0, 5), morning, night]) {
+      for (const correct of [true, false]) {
+        // A move just learned, then one in long-term review, then one missed again.
+        let card = createEmptyCard(at)
+        for (let i = 0; i < 3; i++) {
+          card = gradeCard(card, i === 1 ? true : correct, at).card
+          expect(card.state).toBe(State.Review)
+          expect(isDue(card, night)).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('checks a move just learned the next day, then spaces it out', () => {
+    const learned = gradeCard(createEmptyCard(morning), true, morning).card
+    const nextDay = new Date(2026, 9, 13, 7, 0)
+    expect(isDue(learned, nextDay)).toBe(true)
+    const again = gradeCard(learned, true, nextDay).card
+    expect(isDue(again, new Date(2026, 9, 14, 23, 0))).toBe(false)
+    // A miss comes back the next day.
+    const missed = gradeCard(again, false, new Date(2026, 9, 20, 18, 0)).card
+    expect(isDue(missed, new Date(2026, 9, 20, 23, 0))).toBe(false)
+    expect(isDue(missed, new Date(2026, 9, 21, 6, 0))).toBe(true)
+  })
+
+  it('reviews a move left on a minute-long step the same way', () => {
+    // Cards scheduled before the daily schedule may still be in a learning step.
+    const stepped = { ...review(new Date(2026, 9, 12, 9, 10)), state: State.Relearning, learning_steps: 1 }
+    expect(isDue(stepped, morning)).toBe(true)
+    const next = gradeCard(stepped, true, morning).card
+    expect(next.state).toBe(State.Review)
+    expect(isDue(next, new Date(2026, 9, 12, 23, 0))).toBe(false)
+  })
+})
+
 describe('line runs and grading', () => {
   let d: AppDB
   let n = 0
