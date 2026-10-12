@@ -29,6 +29,9 @@ public/stockfish
 # Cloudflare Worker local state and secrets
 .wrangler
 .dev.vars
+.env
+.env.*
+!.env.example
 worker/worker-configuration.d.ts
 
 # Claude desktop app dev server configs (per machine)
