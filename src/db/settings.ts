@@ -12,6 +12,8 @@ export interface Settings {
   prepDepth: number
   /** New cards introduced per day. */
   newPerDay: number
+  /** Moves to answer in training each day to keep your streak going. */
+  dailyGoal: number
   /** Eval loss (centipawns) above which a repertoire move is flagged. */
   blunderThreshold: number
   /** Which game import rules the stored games were fetched with (see lib/games/import). */
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   explorerFilter: DEFAULT_FILTER,
   prepDepth: 6,
   newPerDay: 10,
+  dailyGoal: 10,
   blunderThreshold: 50,
   planChoices: { white: {}, black: {} },
 }

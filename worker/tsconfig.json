@@ -9,5 +9,7 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src", "worker-configuration.d.ts"]
+  "include": ["src", "worker-configuration.d.ts"],
+  // Tests run with the app's Vitest, in Node.
+  "exclude": ["src/**/*.test.ts"]
 }

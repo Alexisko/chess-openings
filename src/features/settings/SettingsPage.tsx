@@ -8,6 +8,7 @@ import { logout, saveToken, startLogin } from '../../lib/auth/lichess'
 import { ALL_SPEEDS, RATING_BUCKETS, type ExplorerFilter } from '../../lib/explorer'
 import { playSound, setSoundPrefs, soundPrefs } from '../../lib/sound'
 import { syncNow, useSyncStatus } from '../../lib/sync/auto'
+import { AppSettings } from './AppSettings'
 
 export function SettingsPage() {
   const settings = useSettings()
@@ -17,6 +18,7 @@ export function SettingsPage() {
       <h1 className="page-title">Settings</h1>
       <LichessAccount settings={settings} />
       <SyncSettings loggedIn={!!settings.lichessUser} />
+      <AppSettings loggedIn={!!settings.lichessUser} />
       <ExplorerSettings filter={settings.explorerFilter} />
       <TrainingSettings settings={settings} />
       <SoundSettings />
@@ -276,6 +278,14 @@ function TrainingSettings({ settings }: { settings: Settings }) {
           min={1}
           max={100}
           onChange={(n) => setSetting('newPerDay', n)}
+        />
+        <NumberSetting
+          label="Daily goal (moves)"
+          hint="Answer this many moves in training on a day to keep your streak going."
+          value={settings.dailyGoal}
+          min={1}
+          max={200}
+          onChange={(n) => setSetting('dailyGoal', n)}
         />
         <NumberSetting
           label="Engine warning threshold (centipawns)"

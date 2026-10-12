@@ -1,6 +1,9 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { recordsFromLogs, type MoveRecord } from '../lib/srs/knowledge'
 import { gradeCard, isDue, isNew } from '../lib/srs/scheduler'
+import { computeStreak, type Streak } from '../lib/srs/streak'
 import { db, now, uuid, type AppDB, type ReviewMode } from './schema'
+import { getSettings, useSettings } from './settings'
 
 /**
  * Records the first attempt at a card. Due and new cards are rescheduled
@@ -48,4 +51,15 @@ export async function loadMoveRecords(repertoireId: string, d: AppDB = db): Prom
     if (r) out.set(c.positionKey, r)
   }
   return out
+}
+
+/** Your daily streak from the training history. */
+export async function loadStreak(d: AppDB = db): Promise<Streak> {
+  const [logs, { dailyGoal }] = await Promise.all([d.reviews.toArray(), getSettings(d)])
+  return computeStreak(logs, dailyGoal, Date.now())
+}
+
+export function useStreak(): Streak | undefined {
+  const goal = useSettings()?.dailyGoal
+  return useLiveQuery(async () => (goal ? computeStreak(await db.reviews.toArray(), goal, Date.now()) : undefined), [goal])
 }

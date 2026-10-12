@@ -55,6 +55,17 @@ are against the moves real opponents play.
   - *Explain moves* (a switch next to the score, remembered per device) pauses after each correct move to show
     what it threatens and does, until you continue. It's never shown once you're answering again, where it
     could give the next move away.
+- **Streaks and reminders:**
+  - A day counts towards your streak once you've answered the daily goal's number of moves in training
+    (Settings → Training, 10 by default; moves from imported games don't count). The Train tab shows the streak,
+    today's progress and the last seven days; the end of a session says what's left. Days are local days, and
+    the streak follows you across devices through the synced review history.
+  - *Daily reminder* (Settings → App): a notification at the time you choose, only on days you haven't met the
+    goal yet, with the moves due ("Keep your 6-day streak · 14 moves to review"). Tapping it opens the review.
+    It is set per device and needs a Lichess login. On iPhone and iPad it only works in the installed app
+    (iOS 16.4+).
+  - Installed, the app icon shows the number of moves due as a badge, and a long press on it offers Review and
+    Learn new moves.
 - **Preparedness @ move N:** the chance of reaching your N-th move while still in your preparation, when
   opponents choose moves at the explorer's frequencies. It comes in two versions:
   - *Built:* every move you prepared counts as known, so only the opponent's replies can take you out. It
@@ -81,8 +92,11 @@ thread), Dexie (IndexedDB), `ts-fsrs`. It is a PWA: data lives in the browser (I
 between devices by a small Cloudflare Worker (see [Sync](#sync)). **Settings → Backup** exports or restores a
 snapshot file.
 
-Pushing to `main` deploys the static files to GitHub Pages (`.github/workflows/deploy.yml`). On a phone,
-open the Pages URL and use "Add to Home Screen" to install it.
+Pushing to `main` deploys the static files to GitHub Pages (`.github/workflows/deploy.yml`).
+
+To install it on a phone, open the Pages URL: Chrome on Android offers an Install button (on Home and in
+Settings → App); in Safari on iPhone use Share → Add to Home Screen. The installed app opens full screen
+(`display: standalone`, without the browser's bars) and works offline.
 
 Sounds (`public/sound/`) come from [Lichess](https://github.com/lichess-org/lila/tree/master/public/sound):
 `move`, `capture` and `wrong` are its standard `Move`, `Capture` and `OutOfBound`; `line-complete` and
@@ -113,7 +127,24 @@ Deploy the Worker (after `npx wrangler login` once):
 cd worker && npm install && npx wrangler deploy
 ```
 
-It runs on the Workers free plan. To develop against a local Worker, run `npm run dev` in `worker/` and start
+It runs on the Workers free plan.
+
+Daily reminders are Web Push messages sent by the same Worker: each user's Durable Object keeps the devices'
+push subscriptions with their reminder time and time zone, plus a small summary of the training that the app
+reports after each sync (goal, moves answered over the last days, the streak, when cards come due). Its alarm
+fires at the next reminder and skips users who met today's goal. Encryption (RFC 8291) and VAPID (RFC 8292) use
+WebCrypto, with no dependencies (`worker/src/webpush.ts`). They need a VAPID key pair, generated once:
+
+```sh
+cd worker && node scripts/vapid-keys.mjs   # prints the keys and the `wrangler secret put` commands
+```
+
+Store `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (a `mailto:` contact) as secrets, then
+deploy. Without them the app says reminders aren't set up. Changing the keys later turns reminders off on
+every device until they're switched on again. For a local Worker, put the same three values in
+`worker/.dev.vars`.
+
+To develop against a local Worker, run `npm run dev` in `worker/` and start
 the app with `VITE_SYNC_URL=http://localhost:8787`.
 
 ## Develop
@@ -138,6 +169,7 @@ src/lib/openings curated catalogue of openings for the repertoire plan
 src/lib/plan/    repertoire plan per colour (which repertoire answers each reply, what is left to choose)
 src/lib/games/   game import (Lichess, Chess.com), comparison with the repertoire, engine checks
 src/lib/sync/    sync with the server: three-way merge, background scheduling
+src/lib/pwa/     installing the app, daily reminders (push subscription, training status), app badge
 src/features/    pages: dashboard, plan, builder, train, games, settings
 worker/          Cloudflare Worker storing each user's synced copy
 ```

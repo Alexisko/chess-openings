@@ -1,4 +1,5 @@
 import { getSettings, setSetting } from '../../db/settings'
+import { disableReminder } from '../pwa/reminders'
 
 // "Login with Lichess" using OAuth 2 PKCE. Lichess accepts any client_id for
 // public clients, so no app registration or secret is needed. No scopes are
@@ -102,6 +103,8 @@ export async function logout() {
       headers: { Authorization: `Bearer ${lichessToken}` },
     }).catch(() => undefined)
   }
+  // Reminders are kept under the username: stop them going to this device.
+  await disableReminder().catch(() => undefined)
   await setSetting('lichessToken', undefined)
   await setSetting('lichessUser', undefined)
 }

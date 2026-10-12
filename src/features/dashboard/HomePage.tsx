@@ -2,8 +2,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Link, useNavigate } from 'react-router'
 import { pct } from '../../components/format'
 import { ArrowRight, BookIcon, TargetIcon, TrainIcon } from '../../components/icons'
+import { StreakRow } from '../../components/Streak'
 import { ColorDot, ScoreRing, Section } from '../../components/ui'
-import { learnedToday } from '../../db/reviews'
+import { learnedToday, useStreak } from '../../db/reviews'
 import { db, type Repertoire } from '../../db/schema'
 import { useSettings, type Settings } from '../../db/settings'
 import { useRepertoires } from '../../db/useRepertoire'
@@ -13,12 +14,14 @@ import { planScore, type CoveredNode, type RepScore } from '../../lib/plan/plan'
 import { usePlan, useScoreMap } from '../../lib/plan/usePlan'
 import { planUrl, repertoireUrl, trainUrl } from '../../lib/routes'
 import { isDue, isNew } from '../../lib/srs/scheduler'
+import { InstallHint } from '../settings/AppSettings'
 import { COLOR_NAME, LineReporter, NextStep, PrepBar } from './RepertoiresPage'
 
 /** The Train tab, where the app opens: today's session, free training and each colour's prep. */
 export function HomePage() {
   const reps = useRepertoires()
   const settings = useSettings()
+  const streak = useStreak()
   const counts = useLiveQuery(async () => {
     const paused = new Set((await db.repertoires.toArray()).filter((r) => r.paused).map((r) => r.id))
     const cards = (await db.cards.toArray()).filter((c) => !paused.has(c.repertoireId))
@@ -74,9 +77,15 @@ export function HomePage() {
               <p className="text-center text-xs text-muted">{learnBlocked}</p>
             )}
           </div>
+          {streak && (
+            <div className="border-t border-line/70">
+              <StreakRow streak={streak} />
+            </div>
+          )}
         </section>
 
         <div className="flex flex-col gap-5 md:col-start-2 md:row-span-2 md:row-start-1">
+          <InstallHint />
           {settings && !settings.lichessToken && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-warn/35 bg-warn/8 px-4 py-3">
               <p className="min-w-0 flex-1 basis-56 text-xs leading-relaxed text-muted">
