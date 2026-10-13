@@ -340,7 +340,7 @@ function MoveKnowledge({ data }: { data: RepertoireData }) {
       {weak.length > 0 && (
         <>
           <div className="eyebrow mt-5 mb-2">Needs work</div>
-          <ul className="grid gap-2 md:grid-cols-2">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2 md:grid-cols-2">
             {shown.map((r) => {
               const path = pathTo(data.graph, r.key)
               const own = myMove(data.graph, r.key)
