@@ -2,6 +2,7 @@ import { pct } from '../../components/format'
 import type { Repertoire } from '../../db/schema'
 import { formatMoves, replay, type Color } from '../../lib/chess/position'
 import type { CoveredNode, DecisionNode, MoveNode, PlanNode, PlannedMove, RepScore } from '../../lib/plan/plan'
+import type { LineFacts } from '../../lib/prep/lineDepths'
 import type { PrepGap } from '../../lib/prep/usePreparedness'
 import { builderUrl, trainUrl } from '../../lib/routes'
 
@@ -19,6 +20,8 @@ export interface SlotFacts {
   empty: boolean
   /** Gaps inside this line, biggest first. */
   gaps: PrepGap[]
+  /** Your moves and lines from this reply on, with how deep each line goes and how well you know it. */
+  lines: LineFacts
 }
 
 export interface Slot {
@@ -120,7 +123,7 @@ export interface SlotAction {
 export const MIN_GAP = 0.02
 
 /** What to do next in a repertoire line: review what's due, else fill its biggest gap. */
-export function slotAction(rep: Repertoire, facts: SlotFacts | undefined): SlotAction | null {
+export function slotAction(rep: Repertoire, facts: Omit<SlotFacts, 'lines'> | undefined): SlotAction | null {
   if (!facts || rep.paused) return null
   if (facts.due)
     return {

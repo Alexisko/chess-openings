@@ -3,26 +3,30 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Board } from '../../components/Board'
 import { pct } from '../../components/format'
+import { KNOWLEDGE_BG } from '../../components/knowledgeColors'
 import { ArrowRight, BoltIcon, ChevronDown } from '../../components/icons'
 import { ColorDot, ScoreRing, Section } from '../../components/ui'
 import { createRepertoire, findOverlaps } from '../../db/repertoire'
 import { db, type Repertoire } from '../../db/schema'
 import { setPlanChoice, useSettings, type Settings } from '../../db/settings'
-import { useRepertoire, type RepertoireData } from '../../db/useRepertoire'
+import { useMoveRecords, useRepertoire, type RepertoireData } from '../../db/useRepertoire'
 import { startLogin } from '../../lib/auth/lichess'
 import { formatMoves, replay, START_FEN, type Color } from '../../lib/chess/position'
 import { parseMoves, repStart, startsWith } from '../../lib/chess/start'
 import { AuthRequiredError } from '../../lib/explorer'
 import { planScore, sideBranches, type CoveredNode, type Plan, type RepScore } from '../../lib/plan/plan'
 import { useLineScore, usePlan, type PlanState } from '../../lib/plan/usePlan'
+import { lineDepths, type LineFacts } from '../../lib/prep/lineDepths'
+import { ownMovesIn } from '../../lib/prep/preparedness'
 import { usePreparedness } from '../../lib/prep/usePreparedness'
 import { builderUrl, planUrl, repertoireUrl } from '../../lib/routes'
 import { confirmOverlap } from '../../lib/dialog'
+import { KNOWLEDGE_HELP, KNOWLEDGE_LABEL, KNOWLEDGE_ORDER } from '../../lib/srs/knowledge'
 import { isDue, isNew } from '../../lib/srs/scheduler'
 import { useMediaQuery } from '../../lib/useMediaQuery'
 import { Atlas } from './Atlas'
 import { SlotDetail } from './SlotDetail'
-import { ActionLink, CostBar } from './SlotParts'
+import { ActionLink, DepthStrip } from './SlotParts'
 import { choicesOf, rankSlots, replyLabel, share, slotAction, slotsOf, splitLast, type Slot, type SlotFacts } from './slots'
 
 export const COLOR_NAME = { white: 'White', black: 'Black' } as const
@@ -102,7 +106,10 @@ function useFacts(): [Map<string, SlotFacts>, (key: string, f: SlotFacts) => voi
         cur.fresh === f.fresh &&
         cur.empty === f.empty &&
         cur.gaps.length === f.gaps.length &&
-        cur.gaps.every((g, i) => g.key === f.gaps[i].key && g.kind === f.gaps[i].kind && g.reach === f.gaps[i].reach)
+        cur.gaps.every((g, i) => g.key === f.gaps[i].key && g.kind === f.gaps[i].kind && g.reach === f.gaps[i].reach) &&
+        cur.lines.moves === f.lines.moves &&
+        cur.lines.lines.length === f.lines.lines.length &&
+        cur.lines.lines.every((l, i) => l.id === f.lines.lines[i].id && l.depth === f.lines.lines[i].depth && l.level === f.lines.lines[i].level)
       return same ? m : new Map(m).set(key, f)
     })
   }, [])
@@ -151,7 +158,9 @@ function ColorRepertoire({ color, settings }: { color: Color; settings: Settings
   const scores = new Map<string, RepScore>([...facts].map(([k, f]) => [k, f.score]))
   const score = planScore(plan, scores)
   const sides = sideBranches(plan.root)
-  const maxCost = Math.max(0, ...slots.map((s) => s.cost?.total ?? 0))
+  // One move scale for every row, so the strips line up: to the deepest line, within reason.
+  const deepest = Math.max(0, ...slots.flatMap((s) => s.facts?.lines.lines.map((l) => l.depth) ?? []))
+  const maxDepth = Math.min(Math.max(deepest, settings.prepDepth + 2), MAX_STRIP_DEPTH)
   const probes = nodes.filter((n): n is CoveredNode => n.kind === 'covered')
   const detail = (s: Slot, compact = false) => (
     <SlotDetail
@@ -174,14 +183,14 @@ function ColorRepertoire({ color, settings }: { color: Color; settings: Settings
   const ledger = (
     <section className="card">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line/70 px-4 py-3">
-        <h2 className="font-display text-[15px] font-medium tracking-tight">Where your prep leaks</h2>
-        <span className="flex items-center gap-3 text-xs text-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-3 rounded-full bg-line-strong" /> not built
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-3 rounded-full bg-maple" /> forgotten
-          </span>
+        <h2 className="font-display text-[15px] font-medium tracking-tight">Against each reply</h2>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+          {KNOWLEDGE_ORDER.map((l) => (
+            <span key={l} className="flex items-center gap-1.5" title={KNOWLEDGE_HELP[l]}>
+              <span className={`h-2 w-2 rounded-full ${l === 'new' ? 'border border-line-strong' : KNOWLEDGE_BG[l]}`} />
+              {KNOWLEDGE_LABEL[l].toLowerCase()}
+            </span>
+          ))}
         </span>
       </div>
       <ul className="divide-y divide-line/60">
@@ -190,7 +199,8 @@ function ColorRepertoire({ color, settings }: { color: Color; settings: Settings
             key={s.id}
             slot={s}
             color={color}
-            maxCost={maxCost}
+            target={settings.prepDepth}
+            maxDepth={maxDepth}
             selected={selected?.id === s.id}
             onPick={() => pick(s.id)}
             detail={!wide && selected?.id === s.id ? detail(s, true) : null}
@@ -305,17 +315,20 @@ function SlotProbe({
   onFacts: (key: string, f: SlotFacts) => void
 }) {
   const { data, prep, score } = useLineScore(node, color, settings)
+  const records = useMoveRecords(node.rep.id)
   useEffect(() => {
-    if (!data || !score) return
+    if (!data || !score || !records) return
     const now = new Date()
+    const startOwn = ownMovesIn(repStart(data.rep).moves, 0, color)
     onFacts(node.key, {
       score,
       due: node.rep.paused ? 0 : data.cards.filter((c) => isDue(c.fsrs, now)).length,
       fresh: node.rep.paused ? 0 : data.cards.filter((c) => isNew(c.fsrs)).length,
       empty: !data.moves.length,
       gaps: prep?.gaps.filter((g) => g.rep.id === node.rep.id && startsWith(g.path, node.path)) ?? [],
+      lines: lineDepths(data.graph, data.lines, data.cardMap, records, node.key, startOwn, now),
     })
-  }, [data, prep, score, node, onFacts])
+  }, [data, prep, score, records, node, color, onFacts])
   return null
 }
 
@@ -486,11 +499,40 @@ function Count({ value, label, cls = '' }: { value: string; label: ReactNode; cl
   )
 }
 
-/** One reply in the ledger: what it costs you, and the next thing to do about it. */
+/** The longest strip, in your moves: deeper lines sit at its edge. */
+const MAX_STRIP_DEPTH = 20
+
+/** A reply's lines on the depth strip, with how many there are and how many stop short of the target. */
+function LineStrip({ lines, target, max }: { lines: LineFacts; target: number; max: number }) {
+  const short = lines.lines.filter((l) => l.depth < target).length
+  return (
+    <div className="mt-1.5 max-w-60">
+      {lines.lines.length > 0 && <DepthStrip lines={lines.lines} target={target} max={max} />}
+      <div className="mt-0.5 flex justify-between gap-2 text-xs text-muted tabular-nums">
+        {lines.lines.length ? (
+          <span>
+            <span className="font-medium text-ink">{lines.lines.length}</span> {lines.lines.length === 1 ? 'line' : 'lines'} ·{' '}
+            <span className="font-medium text-ink">{lines.moves}</span> {lines.moves === 1 ? 'move' : 'moves'}
+          </span>
+        ) : (
+          <span>No moves yet</span>
+        )}
+        {short > 0 && (
+          <span className="text-warn">
+            {short} {short === 1 ? 'stops' : 'stop'} before move {target}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** One reply in the ledger: its lines, how well you know them, and the next thing to do about it. */
 function LedgerRow({
   slot,
   color,
-  maxCost,
+  target,
+  maxDepth,
   selected,
   onPick,
   detail,
@@ -498,7 +540,10 @@ function LedgerRow({
 }: {
   slot: Slot
   color: Color
-  maxCost: number
+  /** The prep depth target, in your moves. */
+  target: number
+  /** The last move on the strips' scale. */
+  maxDepth: number
   selected: boolean
   onPick: () => void
   /** The slot's detail, open under the row (phones). */
@@ -506,7 +551,7 @@ function LedgerRow({
   /** Picking the row opens its detail under it, rather than beside the list. */
   expandable: boolean
 }) {
-  const { node, facts, cost } = slot
+  const { node, facts } = slot
   const decision = node.kind === 'decision'
   const paused = node.kind === 'covered' && node.rep.paused
   const action = node.kind === 'covered' ? slotAction(node.rep, facts) : null
@@ -534,20 +579,13 @@ function LedgerRow({
             )}
             {paused && <span className="ml-1.5 text-xs font-normal text-faint">paused</span>}
           </button>
-          <div className="mt-1.5 flex items-center gap-3">
-            <div className="max-w-60 flex-1">{cost && <CostBar cost={cost} max={maxCost} open={decision} />}</div>
-            {cost && (
-              <span className="shrink-0 text-xs text-muted tabular-nums">
-                <span className="font-medium text-ink">{share(cost.total)}</span> of games
-              </span>
-            )}
-          </div>
+          {facts && <LineStrip lines={facts.lines} target={target} max={maxDepth} />}
           <div className="mt-1 truncate text-xs text-muted">
             {slot.reach !== null && node.sans.length > 0 && <>met in {share(slot.reach)}</>}
             {facts && (
               <>
                 {slot.reach !== null && node.sans.length > 0 && ' · '}
-                {pct(facts.score.built)} built · {pct(facts.score.remembered)} remembered
+                {pct(facts.score.remembered)} remembered
               </>
             )}
             {decision && <>{slot.reach !== null && ' · '}still to choose</>}
