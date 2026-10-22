@@ -1,5 +1,5 @@
 import { addDays, MAX_JOKERS, type Streak } from '../lib/srs/streak'
-import { FlameIcon, JokerIcon } from './icons'
+import { FlameIcon, KingIcon } from './icons'
 
 const moves = (n: number) => `${n} move${n === 1 ? '' : 's'}`
 const more = (n: number) => `${n} more move${n === 1 ? '' : 's'}`
@@ -28,7 +28,7 @@ export function StreakRow({ streak: s }: { streak: Streak }) {
           </span>
           {s.jokers > 0 && (
             <span className="flex items-center gap-0.5 text-xs text-brass tabular-nums" title={`${jokersText(s.jokers)}. ${JOKER_HINT}`}>
-              <JokerIcon size={14} />
+              <KingIcon size={14} />
               <span className="sr-only">Jokers:</span>
               {s.jokers}
             </span>
@@ -47,7 +47,7 @@ export function StreakRow({ streak: s }: { streak: Streak }) {
           return (
             <li key={day} className="flex flex-col items-center gap-1" title={`${day}: ${moves(n)}${saved ? ', saved by a joker' : ''}`}>
               {saved ? (
-                <JokerIcon size={14} className="text-brass" />
+                <KingIcon size={14} className="text-brass" />
               ) : (
                 <span
                   className={`block h-3.5 w-3.5 rounded-full ${met ? 'bg-brass' : ''} ${isToday && !met ? 'ring-1 ring-brass/60' : ''}`}
@@ -89,7 +89,7 @@ export function StreakNote({ streak: s }: { streak: Streak }) {
 export function JokerNote({ result, jokers }: { result: 'earned' | 'already' | 'full'; jokers: number }) {
   return (
     <p className="flex items-center gap-2 text-sm text-muted">
-      <JokerIcon size={17} className="shrink-0 text-brass" />
+      <KingIcon size={17} className="shrink-0 text-brass" />
       {result === 'earned' ? (
         <span>
           <span className="font-medium text-ink">Perfect review: you earned a joker</span>
