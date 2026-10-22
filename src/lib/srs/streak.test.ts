@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ReviewMode } from '../../db/schema'
-import { addDays, computeStreak, localDay, MAX_JOKERS } from './streak'
+import { addDays, computeStreak, localDay } from './streak'
 
 /** `n` answers at noon on a local day. */
 const answers = (day: string, n: number, mode: ReviewMode = 'review') => {
@@ -58,10 +58,13 @@ describe('jokers', () => {
     expect([...s.saved]).toEqual(['2026-10-05'])
   })
 
-  it(`holds at most ${MAX_JOKERS}`, () => {
+  it('adds up, one a day', () => {
     const earned = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']
-    expect(computeStreak([], 10, noon('2026-10-06'), earned)).toMatchObject({ jokers: MAX_JOKERS, jokerToday: false })
-    expect(computeStreak([], 10, noon('2026-10-04'), earned)).toMatchObject({ jokers: MAX_JOKERS, jokerToday: true })
+    expect(computeStreak([], 10, noon('2026-10-06'), earned)).toMatchObject({ jokers: 4, jokerToday: false })
+    expect(computeStreak([], 10, noon('2026-10-04'), earned)).toMatchObject({ jokers: 4, jokerToday: true })
+    // Three of them save three missed days.
+    const logs = [...answers('2026-10-04', 10), ...answers('2026-10-08', 10)]
+    expect(computeStreak(logs, 10, noon('2026-10-08'), earned)).toMatchObject({ current: 2, jokers: 1 })
   })
 
   it('tells how long the streak lasts without training', () => {

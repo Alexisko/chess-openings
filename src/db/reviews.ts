@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { recordsFromLogs, type MoveRecord } from '../lib/srs/knowledge'
 import { gradeCard, isDue, isNew } from '../lib/srs/scheduler'
-import { computeStreak, localDay, MAX_JOKERS, type Streak } from '../lib/srs/streak'
+import { computeStreak, localDay, type Streak } from '../lib/srs/streak'
 import { useToday } from '../lib/srs/useToday'
 import { db, now, uuid, type AppDB, type ReviewMode } from './schema'
 import { getSettings, setSetting, useSettings } from './settings'
@@ -69,15 +69,11 @@ export function useStreak(): Streak | undefined {
   )
 }
 
-/**
- * Earns today's joker for a perfect review. 'earned' when it did; otherwise
- * today's was already earned or you hold as many as you can.
- */
-export async function earnJoker(d: AppDB = db): Promise<'earned' | 'already' | 'full'> {
+/** Earns today's joker for a perfect review: 'already' when today's was already earned. */
+export async function earnJoker(d: AppDB = db): Promise<'earned' | 'already'> {
   return d.transaction('rw', [d.reviews, d.settings], async () => {
     const s = await loadStreak(d)
     if (s.jokerToday) return 'already'
-    if (s.jokers >= MAX_JOKERS) return 'full'
     const { jokerDays } = await getSettings(d)
     await setSetting('jokerDays', [...jokerDays, localDay(Date.now())], d)
     return 'earned'

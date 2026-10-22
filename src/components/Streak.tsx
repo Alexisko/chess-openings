@@ -1,4 +1,4 @@
-import { addDays, MAX_JOKERS, type Streak } from '../lib/srs/streak'
+import { addDays, type Streak } from '../lib/srs/streak'
 import { FlameIcon, KingIcon } from './icons'
 
 const moves = (n: number) => `${n} move${n === 1 ? '' : 's'}`
@@ -86,7 +86,7 @@ export function StreakNote({ streak: s }: { streak: Streak }) {
 }
 
 /** What a perfect review did for your jokers, for the end of the session. */
-export function JokerNote({ result, jokers }: { result: 'earned' | 'already' | 'full'; jokers: number }) {
+export function JokerNote({ result, jokers }: { result: 'earned' | 'already'; jokers: number }) {
   return (
     <p className="flex items-center gap-2 text-sm text-muted">
       <KingIcon size={17} className="shrink-0 text-brass" />
@@ -95,10 +95,8 @@ export function JokerNote({ result, jokers }: { result: 'earned' | 'already' | '
           <span className="font-medium text-ink">Perfect review: you earned a joker</span>
           {jokers > 1 && ` (you have ${jokers})`}. If you miss a day, it keeps your streak alive.
         </span>
-      ) : result === 'already' ? (
-        <span>Perfect review. You already earned today's joker.</span>
       ) : (
-        <span>Perfect review. You already hold {jokersText(MAX_JOKERS)}, the most you can keep.</span>
+        <span>Perfect review. You already earned today's joker.</span>
       )}
     </p>
   )

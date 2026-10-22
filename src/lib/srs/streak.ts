@@ -6,14 +6,11 @@ import type { ReviewMode } from '../../db/schema'
 // synced review history.
 //
 // Jokers: finishing a review without a mistake earns a joker (at most one a
-// day, and you hold at most MAX_JOKERS). A day missed while a streak is going
-// spends one and keeps the streak alive; the saved day doesn't add to it.
+// day). A day missed while a streak is going spends one and keeps the streak
+// alive; the saved day doesn't add to it.
 
 /** Training modes whose answers count towards the daily goal. */
 const COUNTED: ReadonlySet<ReviewMode> = new Set(['learn', 'review', 'train', 'drill'])
-
-/** Jokers you can hold at once. */
-export const MAX_JOKERS = 2
 
 /** The local day of an instant, YYYY-MM-DD. */
 export function localDay(ts: number): string {
@@ -93,7 +90,7 @@ export function computeStreak(
       lastStreak = run
     }
     best = Math.max(best, run)
-    if (earned.has(d)) jokers = Math.min(MAX_JOKERS, jokers + 1)
+    if (earned.has(d)) jokers++
   }
   const goalMet = done >= goal
   if (goalMet) {
@@ -108,14 +105,8 @@ export function computeStreak(
   // use one earned today.
   const jokerToday = earned.has(today)
   const held = jokers
-  if (jokerToday) jokers = Math.min(MAX_JOKERS, jokers + 1)
-  const keptUntil = !run
-    ? undefined
-    : goalMet
-      ? addDays(today, 1 + jokers)
-      : held
-        ? addDays(today, 1 + Math.min(MAX_JOKERS, held - 1 + (jokerToday ? 1 : 0)))
-        : today
+  if (jokerToday) jokers++
+  const keptUntil = !run ? undefined : goalMet ? addDays(today, 1 + jokers) : held ? addDays(today, jokers) : today
 
   return {
     goal,
