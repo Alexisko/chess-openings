@@ -33,6 +33,53 @@ describe('computeStreak', () => {
   })
 })
 
+describe('jokers', () => {
+  it('saves a missed day and keeps the streak going', () => {
+    const logs = [...answers('2026-10-03', 10), ...answers('2026-10-04', 10), ...answers('2026-10-06', 10)]
+    const s = computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-03'])
+    expect(s).toMatchObject({ current: 3, best: 3, jokers: 0, lastGoalDay: '2026-10-06' })
+    expect([...s.saved]).toEqual(['2026-10-05'])
+  })
+
+  it('is spent once, and only from the day after it was earned', () => {
+    const logs = [...answers('2026-10-03', 10), ...answers('2026-10-04', 10)]
+    // Earned on the missed day itself: too late for it.
+    expect(computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-05'])).toMatchObject({ current: 0, jokers: 1 })
+    // One joker, two missed days.
+    const s = computeStreak(logs, 10, noon('2026-10-07'), ['2026-10-04'])
+    expect(s).toMatchObject({ current: 0, best: 2, jokers: 0 })
+    expect([...s.saved]).toEqual(['2026-10-05'])
+  })
+
+  it('is kept for later when there is no streak to save', () => {
+    const logs = [...answers('2026-10-01', 3), ...answers('2026-10-04', 10), ...answers('2026-10-06', 10)]
+    const s = computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-01'])
+    expect(s).toMatchObject({ current: 2, jokers: 0 })
+    expect([...s.saved]).toEqual(['2026-10-05'])
+  })
+
+  it('adds up, one a day', () => {
+    const earned = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']
+    expect(computeStreak([], 10, noon('2026-10-06'), earned)).toMatchObject({ jokers: 4, jokerToday: false })
+    expect(computeStreak([], 10, noon('2026-10-04'), earned)).toMatchObject({ jokers: 4, jokerToday: true })
+    // Three of them save three missed days.
+    const logs = [...answers('2026-10-04', 10), ...answers('2026-10-08', 10)]
+    expect(computeStreak(logs, 10, noon('2026-10-08'), earned)).toMatchObject({ current: 2, jokers: 1 })
+  })
+
+  it('tells how long the streak lasts without training', () => {
+    const logs = [...answers('2026-10-04', 10), ...answers('2026-10-05', 10)]
+    expect(computeStreak(logs, 10, noon('2026-10-06')).keptUntil).toBe('2026-10-06')
+    expect(computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-04']).keptUntil).toBe('2026-10-07')
+    // Today's joker can't save today, but it can save tomorrow.
+    expect(computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-06']).keptUntil).toBe('2026-10-06')
+    expect(computeStreak(logs, 10, noon('2026-10-06'), ['2026-10-04', '2026-10-06']).keptUntil).toBe('2026-10-08')
+    // Met today: tomorrow, then one more day per joker.
+    expect(computeStreak(logs, 10, noon('2026-10-05'), ['2026-10-05']).keptUntil).toBe('2026-10-07')
+    expect(computeStreak([], 10, noon('2026-10-06'), ['2026-10-04']).keptUntil).toBeUndefined()
+  })
+})
+
 describe('days', () => {
   it('steps across months and years', () => {
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28')

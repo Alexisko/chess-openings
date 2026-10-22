@@ -14,6 +14,8 @@ export interface Settings {
   newPerDay: number
   /** Moves to answer in training each day to keep your streak going. */
   dailyGoal: number
+  /** Days (YYYY-MM-DD) a perfect review earned a joker for the streak (see lib/srs/streak). */
+  jokerDays: string[]
   /** Eval loss (centipawns) above which a repertoire move is flagged. */
   blunderThreshold: number
   /** Which game import rules the stored games were fetched with (see lib/games/import). */
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   prepDepth: 6,
   newPerDay: 10,
   dailyGoal: 10,
+  jokerDays: [],
   blunderThreshold: 50,
   planChoices: { white: {}, black: {} },
 }

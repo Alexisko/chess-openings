@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { Board, type Arrow } from '../../components/Board'
 import { OpeningTrail } from '../../components/OpeningTrail'
-import { StreakNote } from '../../components/Streak'
+import { JokerNote, StreakNote } from '../../components/Streak'
 import {
   ArrowRight,
   BookIcon,
@@ -20,7 +20,7 @@ import {
   TrainIcon,
 } from '../../components/icons'
 import { ColorDot, ScoreRing, Toggle } from '../../components/ui'
-import { learnedToday, loadMoveRecords, recordAttempt, useStreak } from '../../db/reviews'
+import { earnJoker, learnedToday, loadMoveRecords, recordAttempt, useStreak } from '../../db/reviews'
 import { db, type RepMove, type Repertoire, type ReviewMode } from '../../db/schema'
 import { GLYPH_TONE } from '../../lib/chess/glyphs'
 import { engineGlyphOf } from '../../lib/engine/useEngineGlyphs'
@@ -1092,6 +1092,14 @@ function Summary({
     const t = setTimeout(() => playSound('session-complete'))
     return () => clearTimeout(t)
   }, [attempts])
+  // A review finished without a mistake earns a joker for the streak.
+  const perfect = mode === 'review' && !paused && attempts > 0 && stats.wrong === 0
+  const [joker, setJoker] = useState<Awaited<ReturnType<typeof earnJoker>>>()
+  useEffect(() => {
+    if (!perfect) return
+    const t = setTimeout(() => void earnJoker().then(setJoker))
+    return () => clearTimeout(t)
+  }, [perfect])
   // Every card in scope as the session left it: the moves asked, and what's left to do.
   const cards = useLiveQuery(async () => {
     const rows = await db.cards.where('repertoireId').anyOf(scope.reps.map((r) => r.id)).toArray()
@@ -1180,8 +1188,9 @@ function Summary({
       </div>
       {next && <p className="mt-5 font-display text-lg leading-snug">{next}</p>}
       {streak && attempts > 0 && (
-        <div className="mt-4">
+        <div className="mt-4 flex flex-col gap-2">
           <StreakNote streak={streak} />
+          {joker && <JokerNote result={joker} jokers={streak.jokers} />}
         </div>
       )}
       <div className="mt-5 flex gap-2">

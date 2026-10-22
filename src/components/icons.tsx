@@ -243,6 +243,19 @@ export function FlameIcon(p: IconProps) {
   )
 }
 
+/** A chess king: the streak's joker. */
+export function KingIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 2.5v4M10 4.5h4" />
+      <path d="M12 9.5c-1-1.6-2.6-2.3-4.2-1.9C5.3 8.2 4.6 11 6.2 13.4L7.5 15.5h9l1.3-2.1c1.6-2.4.9-5.2-1.6-5.8-1.6-.4-3.2.3-4.2 1.9z" />
+      <path d="M12 9.5v6" />
+      <path d="M7.5 15.5 6.8 19h10.4l-.7-3.5" />
+      <path d="M5.5 21.5h13" />
+    </Svg>
+  )
+}
+
 export function BellIcon(p: IconProps) {
   return (
     <Svg {...p}>
