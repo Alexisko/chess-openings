@@ -243,6 +243,16 @@ export function FlameIcon(p: IconProps) {
   )
 }
 
+/** A playing card with a star: the streak's joker. */
+export function JokerIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="5" y="2.5" width="14" height="19" rx="2.5" />
+      <path d="m12 7.5 1.3 3 3.2.3-2.4 2.1.7 3.1-2.8-1.6-2.8 1.6.7-3.1-2.4-2.1 3.2-.3z" />
+    </Svg>
+  )
+}
+
 export function BellIcon(p: IconProps) {
   return (
     <Svg {...p}>

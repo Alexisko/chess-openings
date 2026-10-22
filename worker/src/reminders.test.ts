@@ -70,6 +70,12 @@ describe('reminderMessage', () => {
     const m = reminderMessage({ ...status, lastGoalDay: '2026-10-03', due: [] }, 'UTC', now)
     expect(m).toMatchObject({ title: 'Time to train', body: 'Answer 10 moves today to start a streak.' })
   })
+
+  it('keeps the streak while jokers can save the missed days', () => {
+    const missed = { ...status, lastGoalDay: '2026-10-04', due: [] }
+    expect(reminderMessage({ ...missed, keptUntil: '2026-10-06' }, 'UTC', now)?.title).toBe('Keep your 6-day streak')
+    expect(reminderMessage({ ...missed, keptUntil: '2026-10-05' }, 'UTC', now)?.title).toBe('Time to train')
+  })
 })
 
 describe('parseStatus', () => {
@@ -79,5 +85,6 @@ describe('parseStatus', () => {
     expect(parseStatus({ ...ok, goal: 0 })).toBeNull()
     expect(parseStatus({ ...ok, recent: { yesterday: 3 } })).toBeNull()
     expect(parseStatus({ ...ok, due: [[1]] })).toBeNull()
+    expect(parseStatus({ ...ok, keptUntil: 'tomorrow' })).toBeNull()
   })
 })

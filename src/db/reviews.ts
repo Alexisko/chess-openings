@@ -1,10 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { recordsFromLogs, type MoveRecord } from '../lib/srs/knowledge'
 import { gradeCard, isDue, isNew } from '../lib/srs/scheduler'
-import { computeStreak, type Streak } from '../lib/srs/streak'
+import { computeStreak, localDay, MAX_JOKERS, type Streak } from '../lib/srs/streak'
 import { useToday } from '../lib/srs/useToday'
 import { db, now, uuid, type AppDB, type ReviewMode } from './schema'
-import { getSettings, useSettings } from './settings'
+import { getSettings, setSetting, useSettings } from './settings'
 
 /**
  * Records the first attempt at a card. Due and new cards are rescheduled
@@ -56,12 +56,30 @@ export async function loadMoveRecords(repertoireId: string, d: AppDB = db): Prom
 
 /** Your daily streak from the training history. */
 export async function loadStreak(d: AppDB = db): Promise<Streak> {
-  const [logs, { dailyGoal }] = await Promise.all([d.reviews.toArray(), getSettings(d)])
-  return computeStreak(logs, dailyGoal, Date.now())
+  const [logs, { dailyGoal, jokerDays }] = await Promise.all([d.reviews.toArray(), getSettings(d)])
+  return computeStreak(logs, dailyGoal, Date.now(), jokerDays)
 }
 
 export function useStreak(): Streak | undefined {
-  const goal = useSettings()?.dailyGoal
+  const settings = useSettings()
   const today = useToday()
-  return useLiveQuery(async () => (goal ? computeStreak(await db.reviews.toArray(), goal, Date.now()) : undefined), [goal, today])
+  return useLiveQuery(
+    async () => (settings ? computeStreak(await db.reviews.toArray(), settings.dailyGoal, Date.now(), settings.jokerDays) : undefined),
+    [settings?.dailyGoal, settings?.jokerDays, today],
+  )
+}
+
+/**
+ * Earns today's joker for a perfect review. 'earned' when it did; otherwise
+ * today's was already earned or you hold as many as you can.
+ */
+export async function earnJoker(d: AppDB = db): Promise<'earned' | 'already' | 'full'> {
+  return d.transaction('rw', [d.reviews, d.settings], async () => {
+    const s = await loadStreak(d)
+    if (s.jokerToday) return 'already'
+    if (s.jokers >= MAX_JOKERS) return 'full'
+    const { jokerDays } = await getSettings(d)
+    await setSetting('jokerDays', [...jokerDays, localDay(Date.now())], d)
+    return 'earned'
+  })
 }

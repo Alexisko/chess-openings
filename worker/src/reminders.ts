@@ -13,6 +13,11 @@ export interface TrainingStatus {
   /** The last day the goal was met, and the length of the streak that day ended. */
   lastGoalDay?: string
   streak: number
+  /**
+   * The last day that streak can be kept going without training, jokers
+   * included. Missing from apps before jokers: the day after lastGoalDay.
+   */
+  keptUntil?: string
   /** When cards come due: [hour (ms / 3,600,000), cards], earliest first. */
   due: [number, number][]
 }
@@ -108,7 +113,8 @@ export function reminderMessage(status: TrainingStatus | undefined, tz: string, 
   const today = dayKey(now, tz)
   const done = status.recent[today] ?? 0
   if (done >= status.goal) return null
-  const streak = status.lastGoalDay === addDays(today, -1) ? status.streak : 0
+  const keptUntil = status.keptUntil ?? (status.lastGoalDay && addDays(status.lastGoalDay, 1))
+  const streak = keptUntil && keptUntil >= today ? status.streak : 0
   // Reviews are daily: whatever comes due before the device's day ends is due today.
   const dayEnd = zonedToUtc(addDays(today, 1), '00:00', tz)
   const due = status.due.reduce((n, [hour, count]) => (hour * HOUR < dayEnd ? n + count : n), 0)
@@ -132,7 +138,8 @@ export function parseStatus(x: unknown): TrainingStatus | null {
   const day = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
   if (!count(s.goal) || s.goal < 1 || !count(s.streak)) return null
   if (s.lastGoalDay !== undefined && !day(s.lastGoalDay)) return null
+  if (s.keptUntil !== undefined && !day(s.keptUntil)) return null
   if (!s.recent || typeof s.recent !== 'object' || !Object.entries(s.recent).every(([d, n]) => day(d) && count(n))) return null
   if (!Array.isArray(s.due) || !s.due.every((e) => Array.isArray(e) && e.length === 2 && count(e[0]) && count(e[1]))) return null
-  return { goal: s.goal, recent: s.recent, lastGoalDay: s.lastGoalDay, streak: s.streak, due: s.due }
+  return { goal: s.goal, recent: s.recent, lastGoalDay: s.lastGoalDay, streak: s.streak, keptUntil: s.keptUntil, due: s.due }
 }

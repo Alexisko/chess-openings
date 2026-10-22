@@ -63,6 +63,9 @@ are against the moves real opponents play.
     (Settings → Training, 10 by default; moves from imported games don't count). The Train tab shows the streak,
     today's progress and the last seven days; the end of a session says what's left. Days are local days, and
     the streak follows you across devices through the synced review history.
+  - *Jokers:* finishing a review without a single mistake earns a joker (at most one a day; you hold up to two).
+    A day you miss while a streak is going spends one and keeps the streak alive, without adding to it. The Train
+    tab shows your jokers and the days they saved.
   - *Daily reminder* (Settings → App): a notification at the time you choose, only on days you haven't met the
     goal yet, with the moves due ("Keep your 6-day streak · 14 moves to review"). Tapping it opens the review.
     It is set per device and needs a Lichess login. On iPhone and iPad it only works in the installed app

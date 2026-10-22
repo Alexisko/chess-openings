@@ -186,6 +186,7 @@ export async function reportTraining(): Promise<void> {
     recent,
     lastGoalDay: streak.lastGoalDay,
     streak: streak.lastStreak,
+    keptUntil: streak.keptUntil,
     due: [...buckets].sort((a, b) => a[0] - b[0]).slice(0, MAX_DUE_BUCKETS),
   }
   const json = JSON.stringify(status)
